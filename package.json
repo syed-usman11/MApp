@@ -1,0 +1,29 @@
+{
+  "name": "mapp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Messaging app with national-ID gated registration",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:server": "npm run dev -w @mapp/server",
+    "dev:mobile": "npm run start -w @mapp/mobile",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "npm run db:generate -w @mapp/server"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "npm@11.11.0",
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "turbo": "^2.10.12",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

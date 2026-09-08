@@ -1,0 +1,44 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# In the Render dashboard choose "New > Blueprint", pick this repo, and Render
+# creates the API service from this file. Values marked sync: false are
+# prompted for in the dashboard and never stored in git.
+services:
+  - type: web
+    name: mapp-api
+    runtime: node
+    plan: free
+    region: singapore
+    # The server depends on packages/protocol and packages/identity, which
+    # turbo builds first. --include=dev is required because NODE_ENV=production
+    # would otherwise make npm skip typescript and turbo during the build.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start -w @mapp/server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      # Render injects PORT; the server reads it.
+      - key: DATABASE_URL
+        sync: false # Neon direct (non-pooled) connection string, keep sslmode=require
+      - key: JWT_SECRET
+        generateValue: true
+      - key: IDENTITY_PEPPER
+        generateValue: true
+      - key: VAULT_KEY
+        sync: false # exactly 64 hex chars: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      # PUBLIC_URL is not needed: the server falls back to RENDER_EXTERNAL_URL,
+      # which Render sets to this service's https address automatically.
+      - key: APP_REDIRECT_URL
+        value: mapp://auth
+      # No national-ID provider yet: email/password sign-up only. Set to
+      # in.digilocker plus DIGILOCKER_CLIENT_ID/SECRET when you have them.
+      - key: IDENTITY_PROVIDERS
+        value: ""
+      - key: ID_VERIFICATION_REQUIRED
+        value: "false"
+      - key: REGISTRATION_MIN_ASSURANCE
+        value: low

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.turbo/
+.env
+.env.local
+*.log
+apps/server/data/
+.expo/
+apps/mobile/.expo/
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/web-build/
+
+# Claude Code local config
+.claude/
+**/.claude/
