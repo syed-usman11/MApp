@@ -159,10 +159,10 @@ const makeStyles = (_: Theme) =>
     caption: { fontFamily: fonts.regular, fontSize: 15, color: "#fff", lineHeight: 21 },
     reactionSummary: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     summaryChip: { backgroundColor: "rgba(255,255,255,0.14)", borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3 },
-    summaryChipMine: { backgroundColor: "rgba(46,209,138,0.35)" },
+    summaryChipMine: { backgroundColor: "rgba(129,140,248,0.40)" },
     summaryText: { fontFamily: fonts.semibold, fontSize: 12, color: "#fff" },
     reactionRow: { flexDirection: "row", justifyContent: "space-between" },
     reactionPick: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.12)" },
-    reactionPickActive: { backgroundColor: "rgba(46,209,138,0.45)" },
+    reactionPickActive: { backgroundColor: "rgba(129,140,248,0.55)" },
     reactionText: { fontSize: 24 },
   });

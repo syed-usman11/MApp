@@ -317,6 +317,9 @@ describe("groups, media, message actions, search, push and calls", () => {
     a.send({ type: "call.ice", callId: incoming.callId, candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 } });
     expect((await b.nextOfType("call.ice")).candidate.candidate).toBe("candidate:1");
 
+    a.send({ type: "call.hold", callId: incoming.callId, onHold: true });
+    expect(await b.nextOfType("call.hold")).toMatchObject({ callId: incoming.callId, userId: alice.user.id, onHold: true });
+
     b.send({ type: "call.end", callId: incoming.callId, reason: "hangup" });
     expect(await a.nextOfType("call.ended")).toMatchObject({ callId: incoming.callId, reason: "hangup" });
     expect(await b.nextOfType("call.ended")).toMatchObject({ callId: incoming.callId });

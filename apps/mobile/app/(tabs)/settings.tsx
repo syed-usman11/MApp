@@ -9,6 +9,7 @@ import { useSession } from "../../src/session";
 import { fonts, radius, spacing } from "../../src/theme";
 import { useThemeStore, type ThemeMode } from "../../src/themeStore";
 import { TopBar, useTopBarSpace } from "../../src/TopBar";
+import Constants from "expo-constants";
 import { Avatar, Button, Muted, PressableScale, Reveal, SectionLabel, Segmented, type IconName } from "../../src/ui";
 import { useStyles, useTheme, type Theme } from "../../src/useTheme";
 
@@ -90,7 +91,7 @@ export default function Settings() {
 
         <Reveal delay={260}>
           <Button title="Log out" variant="danger" icon="log-out-outline" onPress={() => void signOut()} busy={busy} />
-          <Text style={s.version}>MApp 0.1.0</Text>
+          <Text style={s.version}>MApp v{Constants.expoConfig?.version ?? "1.0"} (build {Constants.expoConfig?.android?.versionCode ?? 1})</Text>
         </Reveal>
       </ScrollView>
     </View>

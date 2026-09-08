@@ -106,3 +106,64 @@ export function iceServers(): Array<{ urls: string | string[]; username?: string
   }
   return servers;
 }
+
+/**
+ * Audio routing during a call: earpiece vs speakerphone, proximity sensor,
+ * and the platform "in call" audio mode. Native only; the browser plays
+ * through the default output and these become no-ops.
+ */
+export interface AudioRoute {
+  start(): void;
+  stop(): void;
+  setSpeaker(on: boolean): void;
+  available: boolean;
+}
+
+let routeCached: AudioRoute | undefined;
+
+export function getAudioRoute(): AudioRoute {
+  if (routeCached) return routeCached;
+  const noop: AudioRoute = { start: () => undefined, stop: () => undefined, setSpeaker: () => undefined, available: false };
+  if (Platform.OS === "web") return (routeCached = noop);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("react-native-incall-manager") as { default?: InCallManagerLike } & InCallManagerLike;
+    const icm = mod.default ?? mod;
+    if (!icm?.start) return (routeCached = noop);
+    routeCached = {
+      available: true,
+      start: () => {
+        try {
+          icm.start({ media: "audio" });
+          icm.setForceSpeakerphoneOn(false);
+        } catch {
+          // audio session already active
+        }
+      },
+      stop: () => {
+        try {
+          icm.setForceSpeakerphoneOn(false);
+          icm.stop();
+        } catch {
+          // already stopped
+        }
+      },
+      setSpeaker: (on) => {
+        try {
+          icm.setForceSpeakerphoneOn(on);
+        } catch {
+          // no audio session
+        }
+      },
+    };
+    return routeCached;
+  } catch {
+    return (routeCached = noop);
+  }
+}
+
+interface InCallManagerLike {
+  start(opts: { media: "audio" | "video" }): void;
+  stop(): void;
+  setForceSpeakerphoneOn(on: boolean): void;
+}

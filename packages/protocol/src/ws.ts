@@ -62,6 +62,8 @@ export const ClientEvent = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("call.answer"), callId: Id, sdp: Sdp }),
   z.object({ type: z.literal("call.ice"), callId: Id, candidate: IceCandidate }),
+  /** Tell the other side we paused the call. */
+  z.object({ type: z.literal("call.hold"), callId: Id, onHold: z.boolean() }),
   z.object({
     type: z.literal("call.end"),
     callId: Id,
@@ -100,6 +102,7 @@ export const ServerEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("call.ringing"), callId: Id, conversationId: Id }),
   z.object({ type: z.literal("call.answered"), callId: Id, sdp: Sdp }),
   z.object({ type: z.literal("call.ice"), callId: Id, candidate: IceCandidate }),
+  z.object({ type: z.literal("call.hold"), callId: Id, userId: Id, onHold: z.boolean() }),
   z.object({
     type: z.literal("call.ended"),
     callId: Id,

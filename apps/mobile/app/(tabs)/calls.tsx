@@ -139,5 +139,5 @@ const makeStyles = ({ colors }: Theme) =>
     name: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
     detailRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
     detail: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    fab: { position: "absolute", right: spacing.lg, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", boxShadow: "0px 8px 24px rgba(11,110,79,0.35)" },
+    fab: { position: "absolute", right: spacing.lg, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", boxShadow: "0px 8px 24px rgba(79,70,229,0.35)" },
   });

@@ -42,14 +42,14 @@ export async function registerForPush(): Promise<{ token: string | null; reason?
         importance: Notifications.AndroidImportance.HIGH,
         sound: "default",
         vibrationPattern: [0, 200, 100, 200],
-        lightColor: "#0B6E4F",
+        lightColor: "#4F46E5",
       });
       await Notifications.setNotificationChannelAsync("calls", {
         name: "Calls",
         importance: Notifications.AndroidImportance.MAX,
         sound: "default",
         vibrationPattern: [0, 500, 300, 500, 300, 500],
-        lightColor: "#0B6E4F",
+        lightColor: "#4F46E5",
         bypassDnd: true,
       });
     }

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { PublicUser, ServerEvent } from "@mapp/protocol";
+import { getAudioRoute, getRtc, iceServers, type RtcIceCandidate, type RtcPeerConnection, type RtcSessionDescription, type RtcStream } from "./webrtc";
 import { sendSocketEvent } from "./wsSend";
-import { getRtc, iceServers, type RtcIceCandidate, type RtcPeerConnection, type RtcSessionDescription, type RtcStream } from "./webrtc";
 
 export type CallPhase = "idle" | "outgoing" | "incoming" | "connecting" | "active" | "ended";
 
@@ -13,6 +13,11 @@ export interface CallState {
   /** When the media connection came up; drives the timer. */
   connectedAt: number | null;
   muted: boolean;
+  speakerOn: boolean;
+  /** I paused the call. */
+  onHold: boolean;
+  /** The other side paused the call. */
+  peerOnHold: boolean;
   endReason: string | null;
   /** Why a call could not start, e.g. WebRTC missing in Expo Go. */
   error: string | null;
@@ -22,6 +27,8 @@ export interface CallState {
   decline(): void;
   hangup(): void;
   toggleMute(): void;
+  toggleSpeaker(): void;
+  toggleHold(): void;
   dismiss(): void;
   handleEvent(event: ServerEvent): void;
 }
@@ -29,12 +36,12 @@ export interface CallState {
 interface Session {
   pc: RtcPeerConnection;
   local: RtcStream;
+  remote: RtcStream | null;
   stopRemote: (() => void) | null;
   /** ICE candidates found before the server assigned a call id (caller side). */
   pendingLocalIce: RtcIceCandidate[];
   /** Remote candidates that arrived before the remote description was set. */
   pendingRemoteIce: RtcIceCandidate[];
-  offer: RtcSessionDescription | null;
 }
 
 let session: Session | null = null;
@@ -55,13 +62,21 @@ function teardown() {
   }
   session = null;
   incomingOffer = null;
+  getAudioRoute().stop();
+}
+
+/** Mute/unmute what we send and what we hear, used by both mute and hold. */
+function applyAudio(muted: boolean, onHold: boolean, peerOnHold: boolean) {
+  if (!session) return;
+  for (const t of session.local.getAudioTracks()) t.enabled = !muted && !onHold;
+  if (session.remote) for (const t of session.remote.getAudioTracks()) t.enabled = !onHold && !peerOnHold;
 }
 
 export const useCall = create<CallState>((set, get) => {
   function newSession(local: RtcStream): Session {
     const rtc = getRtc()!;
     const pc = rtc.createPeerConnection({ iceServers: iceServers() });
-    const s: Session = { pc, local, stopRemote: null, pendingLocalIce: [], pendingRemoteIce: [], offer: null };
+    const s: Session = { pc, local, remote: null, stopRemote: null, pendingLocalIce: [], pendingRemoteIce: [] };
     for (const track of local.getTracks()) pc.addTrack(track, local);
     pc.onicecandidate = ({ candidate }) => {
       if (!candidate) return;
@@ -70,7 +85,12 @@ export const useCall = create<CallState>((set, get) => {
       else s.pendingLocalIce.push(candidate);
     };
     pc.ontrack = ({ streams }) => {
-      if (streams[0] && !s.stopRemote) s.stopRemote = rtc.playRemote(streams[0]);
+      if (streams[0] && !s.stopRemote) {
+        s.remote = streams[0];
+        s.stopRemote = rtc.playRemote(streams[0]);
+        const { muted, onHold, peerOnHold } = get();
+        applyAudio(muted, onHold, peerOnHold);
+      }
     };
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
@@ -81,12 +101,14 @@ export const useCall = create<CallState>((set, get) => {
         finish("failed");
       }
     };
+    getAudioRoute().start();
+    getAudioRoute().setSpeaker(get().speakerOn);
     return s;
   }
 
   function finish(reason: string) {
     teardown();
-    set({ phase: "ended", endReason: reason, connectedAt: null, muted: false });
+    set({ phase: "ended", endReason: reason, connectedAt: null, muted: false, onHold: false, peerOnHold: false, speakerOn: false });
   }
 
   async function flushRemoteIce() {
@@ -102,6 +124,9 @@ export const useCall = create<CallState>((set, get) => {
     peer: null,
     connectedAt: null,
     muted: false,
+    speakerOn: false,
+    onHold: false,
+    peerOnHold: false,
     endReason: null,
     error: null,
 
@@ -112,7 +137,7 @@ export const useCall = create<CallState>((set, get) => {
         return;
       }
       if (get().phase !== "idle" && get().phase !== "ended") return;
-      set({ phase: "outgoing", conversationId, peer, callId: null, endReason: null, error: null, muted: false, connectedAt: null });
+      set({ phase: "outgoing", conversationId, peer, callId: null, endReason: null, error: null, muted: false, onHold: false, peerOnHold: false, speakerOn: false, connectedAt: null });
       try {
         const local = await rtc.getAudioStream();
         session = newSession(local);
@@ -136,7 +161,7 @@ export const useCall = create<CallState>((set, get) => {
       try {
         const local = await rtc.getAudioStream();
         session = newSession(local);
-        set({ phase: "connecting", muted: false });
+        set({ phase: "connecting", muted: false, onHold: false, peerOnHold: false });
         await session.pc.setRemoteDescription(incomingOffer);
         await flushRemoteIce();
         const answer = await session.pc.createAnswer();
@@ -164,8 +189,23 @@ export const useCall = create<CallState>((set, get) => {
     toggleMute() {
       if (!session) return;
       const muted = !get().muted;
-      for (const t of session.local.getAudioTracks()) t.enabled = !muted;
+      applyAudio(muted, get().onHold, get().peerOnHold);
       set({ muted });
+    },
+
+    toggleSpeaker() {
+      const speakerOn = !get().speakerOn;
+      getAudioRoute().setSpeaker(speakerOn);
+      set({ speakerOn });
+    },
+
+    toggleHold() {
+      const { callId, onHold, muted, peerOnHold } = get();
+      if (!session || !callId) return;
+      const next = !onHold;
+      applyAudio(muted, next, peerOnHold);
+      sendSocketEvent({ type: "call.hold", callId, onHold: next });
+      set({ onHold: next });
     },
 
     dismiss() {
@@ -188,7 +228,7 @@ export const useCall = create<CallState>((set, get) => {
             return;
           }
           incomingOffer = event.sdp;
-          set({ phase: "incoming", callId: event.callId, conversationId: event.conversationId, peer: event.from, endReason: null, error: null, connectedAt: null });
+          set({ phase: "incoming", callId: event.callId, conversationId: event.conversationId, peer: event.from, endReason: null, error: null, connectedAt: null, onHold: false, peerOnHold: false, speakerOn: false });
           return;
         }
         case "call.answered": {
@@ -208,6 +248,12 @@ export const useCall = create<CallState>((set, get) => {
           if (!session) return;
           if (session.pc.remoteDescription) void session.pc.addIceCandidate(event.candidate).catch(() => undefined);
           else session.pendingRemoteIce.push(event.candidate);
+          return;
+        }
+        case "call.hold": {
+          if (event.callId !== get().callId) return;
+          applyAudio(get().muted, get().onHold, event.onHold);
+          set({ peerOnHold: event.onHold });
           return;
         }
         case "call.ended": {
