@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
+import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import { useEffect, useState } from "react";
-import { Modal, StyleSheet, Text, View } from "react-native";
+import { Modal, Platform, StyleSheet, Text, Vibration, View } from "react-native";
 import Animated, { FadeIn, ZoomIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { describeEnd, useCall } from "./callStore";
@@ -29,6 +30,41 @@ export function CallOverlay() {
   const toggleMute = useCall((c) => c.toggleMute);
   const dismiss = useCall((c) => c.dismiss);
   const [now, setNow] = useState(Date.now());
+  const ringback = useAudioPlayer(require("../assets/sounds/ringback.wav"));
+  const ringtone = useAudioPlayer(require("../assets/sounds/ringtone.wav"));
+
+  // Ringback while we wait for the other side; ringtone and vibration while they wait for us.
+  useEffect(() => {
+    const start = (player: typeof ringback) => {
+      player.loop = true;
+      void player.seekTo(0);
+      player.play();
+    };
+    const stop = (player: typeof ringback) => {
+      try {
+        player.pause();
+      } catch {
+        // player may already be released
+      }
+    };
+    if (phase === "outgoing") {
+      void setAudioModeAsync({ playsInSilentMode: true }).catch(() => undefined);
+      start(ringback);
+      stop(ringtone);
+    } else if (phase === "incoming") {
+      void setAudioModeAsync({ playsInSilentMode: true }).catch(() => undefined);
+      start(ringtone);
+      stop(ringback);
+      if (Platform.OS !== "web") Vibration.vibrate([0, 600, 400, 600, 400], true);
+    } else {
+      stop(ringback);
+      stop(ringtone);
+      if (Platform.OS !== "web") Vibration.cancel();
+    }
+    return () => {
+      if (Platform.OS !== "web") Vibration.cancel();
+    };
+  }, [phase, ringback, ringtone]);
 
   useEffect(() => {
     if (phase !== "active") return;
