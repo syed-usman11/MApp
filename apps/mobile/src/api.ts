@@ -1,5 +1,5 @@
 import type { RefreshResponse } from "@mapp/protocol";
-import { API_URL } from "./config";
+import { API_URL, IS_DEV_BUILD } from "./config";
 import { useSession } from "./session";
 
 export class ApiError extends Error {
@@ -21,7 +21,9 @@ export function errorMessage(err: unknown): string {
 
 const TIMEOUT_MS = 12_000;
 
-export const NETWORK_HINT = `Cannot reach the server at ${API_URL}. On a phone, make sure it shares Wi-Fi with the PC running the server and that the firewall allows port 4000.`;
+export const NETWORK_HINT = IS_DEV_BUILD
+  ? `Cannot reach the server at ${API_URL}. On a phone, make sure it shares Wi-Fi with the PC running the server and that the firewall allows port 4000.`
+  : `Cannot reach the server at ${API_URL}. Check your internet connection and try again.`;
 
 /** fetch with a hard timeout; any transport failure becomes one clear, actionable ApiError. */
 export async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {

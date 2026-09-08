@@ -19,5 +19,12 @@ function devHost(): string {
   return "localhost";
 }
 
-export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? `http://${devHost()}:4000`).replace(/\/+$/, "");
+/** Deployed API, used by production builds (web export, release APK) when EXPO_PUBLIC_API_URL is not set. */
+const PRODUCTION_API_URL = "https://mapp-api-2p5c.onrender.com";
+
+export const IS_DEV_BUILD = typeof __DEV__ !== "undefined" && __DEV__;
+
+export const API_URL = (
+  process.env.EXPO_PUBLIC_API_URL ?? (IS_DEV_BUILD ? `http://${devHost()}:4000` : PRODUCTION_API_URL)
+).replace(/\/+$/, "");
 export const WS_URL = `${API_URL.replace(/^http/, "ws")}/ws`;
