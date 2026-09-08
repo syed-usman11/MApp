@@ -1,5 +1,15 @@
 import { create } from "zustand";
-import type { Conversation, ListConversationsResponse, ListMessagesResponse, Message, ServerEvent } from "@mapp/protocol";
+import type {
+  AttachmentInput,
+  ContentType,
+  Conversation,
+  ListConversationsResponse,
+  ListMessagesResponse,
+  Message,
+  ReplyPreview,
+  SearchResponse,
+  ServerEvent,
+} from "@mapp/protocol";
 import { api } from "./api";
 
 export type LocalMessage = Message & { pending?: boolean; failed?: boolean };
@@ -7,6 +17,16 @@ export type LocalMessage = Message & { pending?: boolean; failed?: boolean };
 export interface Receipt {
   deliveredAt?: string;
   readAt?: string;
+}
+
+export interface PendingInput {
+  conversationId: string;
+  clientId: string;
+  senderId: string;
+  body: string;
+  contentType: Exclude<ContentType, "system">;
+  attachment?: AttachmentInput & { url: string };
+  replyTo?: ReplyPreview;
 }
 
 const TYPING_TTL_MS = 4000;
@@ -21,13 +41,22 @@ export interface ChatState {
   presence: Record<string, boolean>;
   /** conversationId -> userId -> expiry timestamp. */
   typing: Record<string, Record<string, number>>;
+  /** Ids the user deleted "for me"; the server's confirmation removes them instead of tombstoning. */
+  hiddenLocally: Record<string, true>;
 
   setConnected(connected: boolean): void;
   loadConversations(): Promise<void>;
   openDirect(username: string): Promise<Conversation>;
+  createGroup(name: string, memberIds: string[]): Promise<Conversation>;
+  updateGroup(conversationId: string, patch: { name?: string; avatarMediaId?: string | null }): Promise<Conversation>;
+  addMembers(conversationId: string, memberIds: string[]): Promise<Conversation>;
+  removeMember(conversationId: string, userId: string): Promise<void>;
+  leaveGroup(conversationId: string, meId: string): Promise<void>;
+  search(q: string): Promise<SearchResponse>;
   loadMessages(conversationId: string): Promise<void>;
-  addPending(conversationId: string, clientId: string, body: string, senderId: string): void;
+  addPending(input: PendingInput): void;
   markFailed(conversationId: string, clientId: string): void;
+  markHiddenLocally(messageId: string): void;
   clearUnread(conversationId: string): void;
   handleEvent(event: ServerEvent): void;
   reset(): void;
@@ -41,6 +70,12 @@ function upsertMessage(list: LocalMessage[], message: LocalMessage): LocalMessag
   return next;
 }
 
+function patchMessage(messages: Record<string, LocalMessage[]>, conversationId: string, messageId: string, patch: (m: LocalMessage) => LocalMessage) {
+  const list = messages[conversationId];
+  if (!list) return messages;
+  return { ...messages, [conversationId]: list.map((m) => (m.id === messageId ? patch(m) : m)) };
+}
+
 export const useChat = create<ChatState>((set, get) => ({
   connected: false,
   conversations: {},
@@ -48,6 +83,7 @@ export const useChat = create<ChatState>((set, get) => ({
   receipts: {},
   presence: {},
   typing: {},
+  hiddenLocally: {},
 
   setConnected(connected) {
     set({ connected });
@@ -66,6 +102,43 @@ export const useChat = create<ChatState>((set, get) => ({
     return conv;
   },
 
+  async createGroup(name, memberIds) {
+    const conv = await api<Conversation>("/v1/conversations/group", { body: { name, memberIds } });
+    set((s) => ({ conversations: { ...s.conversations, [conv.id]: conv } }));
+    return conv;
+  },
+
+  async updateGroup(conversationId, patch) {
+    const conv = await api<Conversation>(`/v1/conversations/${conversationId}`, { method: "PATCH", body: patch });
+    set((s) => ({ conversations: { ...s.conversations, [conv.id]: conv } }));
+    return conv;
+  },
+
+  async addMembers(conversationId, memberIds) {
+    const conv = await api<Conversation>(`/v1/conversations/${conversationId}/members`, { body: { memberIds } });
+    set((s) => ({ conversations: { ...s.conversations, [conv.id]: conv } }));
+    return conv;
+  },
+
+  async removeMember(conversationId, userId) {
+    await api(`/v1/conversations/${conversationId}/members/${userId}`, { method: "DELETE" });
+  },
+
+  async leaveGroup(conversationId, meId) {
+    await api(`/v1/conversations/${conversationId}/members/${meId}`, { method: "DELETE" });
+    set((s) => {
+      const conversations = { ...s.conversations };
+      delete conversations[conversationId];
+      const messages = { ...s.messages };
+      delete messages[conversationId];
+      return { conversations, messages };
+    });
+  },
+
+  search(q) {
+    return api<SearchResponse>(`/v1/search?q=${encodeURIComponent(q)}`);
+  },
+
   async loadMessages(conversationId) {
     const res = await api<ListMessagesResponse>(`/v1/conversations/${conversationId}/messages?limit=100`);
     set((s) => {
@@ -78,18 +151,22 @@ export const useChat = create<ChatState>((set, get) => ({
     });
   },
 
-  addPending(conversationId, clientId, body, senderId) {
+  addPending(input) {
     const message: LocalMessage = {
-      id: `pending:${clientId}`,
-      clientId,
-      conversationId,
-      senderId,
-      body,
-      contentType: "text",
+      id: `pending:${input.clientId}`,
+      clientId: input.clientId,
+      conversationId: input.conversationId,
+      senderId: input.senderId,
+      body: input.body,
+      contentType: input.contentType,
+      ...(input.attachment ? { attachment: input.attachment } : {}),
+      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
+      reactions: [],
+      deleted: false,
       createdAt: new Date().toISOString(),
       pending: true,
     };
-    set((s) => ({ messages: { ...s.messages, [conversationId]: upsertMessage(s.messages[conversationId] ?? [], message) } }));
+    set((s) => ({ messages: { ...s.messages, [input.conversationId]: upsertMessage(s.messages[input.conversationId] ?? [], message) } }));
   },
 
   markFailed(conversationId, clientId) {
@@ -101,6 +178,10 @@ export const useChat = create<ChatState>((set, get) => ({
         ),
       },
     }));
+  },
+
+  markHiddenLocally(messageId) {
+    set((s) => ({ hiddenLocally: { ...s.hiddenLocally, [messageId]: true } }));
   },
 
   clearUnread(conversationId) {
@@ -119,6 +200,7 @@ export const useChat = create<ChatState>((set, get) => ({
         const { message } = event;
         const conv = s.conversations[message.conversationId];
         const isMine = event.type === "message.sent";
+        const countsAsUnread = !isMine && message.contentType !== "system";
         set({
           messages: { ...s.messages, [message.conversationId]: upsertMessage(s.messages[message.conversationId] ?? [], message) },
           conversations: conv
@@ -127,12 +209,67 @@ export const useChat = create<ChatState>((set, get) => ({
                 [message.conversationId]: {
                   ...conv,
                   lastMessage: message,
-                  unreadCount: isMine ? conv.unreadCount : conv.unreadCount + 1,
+                  unreadCount: countsAsUnread ? conv.unreadCount + 1 : conv.unreadCount,
                 },
               }
             : s.conversations,
         });
         if (!conv) void get().loadConversations();
+        return;
+      }
+      case "message.edited": {
+        const { message } = event;
+        const conv = s.conversations[message.conversationId];
+        set({
+          messages: { ...s.messages, [message.conversationId]: upsertMessage(s.messages[message.conversationId] ?? [], message) },
+          conversations: conv && conv.lastMessage?.id === message.id ? { ...s.conversations, [message.conversationId]: { ...conv, lastMessage: message } } : s.conversations,
+        });
+        return;
+      }
+      case "message.deleted": {
+        const { messageId, conversationId } = event;
+        if (s.hiddenLocally[messageId]) {
+          const hiddenLocally = { ...s.hiddenLocally };
+          delete hiddenLocally[messageId];
+          const list = (s.messages[conversationId] ?? []).filter((m) => m.id !== messageId);
+          const conv = s.conversations[conversationId];
+          set({
+            hiddenLocally,
+            messages: { ...s.messages, [conversationId]: list },
+            conversations:
+              conv && conv.lastMessage?.id === messageId ? { ...s.conversations, [conversationId]: { ...conv, lastMessage: list[list.length - 1] ?? null } } : s.conversations,
+          });
+          return;
+        }
+        const tombstone = (m: LocalMessage): LocalMessage => ({ ...m, deleted: true, body: "", attachment: undefined, reactions: [], editedAt: undefined });
+        const conv = s.conversations[conversationId];
+        set({
+          messages: patchMessage(s.messages, conversationId, messageId, tombstone),
+          conversations:
+            conv && conv.lastMessage?.id === messageId ? { ...s.conversations, [conversationId]: { ...conv, lastMessage: tombstone(conv.lastMessage) } } : s.conversations,
+        });
+        return;
+      }
+      case "reaction": {
+        set({
+          messages: patchMessage(s.messages, event.conversationId, event.messageId, (m) => {
+            const others = m.reactions.filter((r) => r.userId !== event.userId);
+            return { ...m, reactions: event.emoji ? [...others, { userId: event.userId, emoji: event.emoji }] : others };
+          }),
+        });
+        return;
+      }
+      case "conversation.updated": {
+        const { conversation, removed } = event;
+        if (removed) {
+          const conversations = { ...s.conversations };
+          delete conversations[conversation.id];
+          const messages = { ...s.messages };
+          delete messages[conversation.id];
+          set({ conversations, messages });
+        } else {
+          set({ conversations: { ...s.conversations, [conversation.id]: conversation } });
+        }
         return;
       }
       case "receipt": {
@@ -160,7 +297,7 @@ export const useChat = create<ChatState>((set, get) => ({
   },
 
   reset() {
-    set({ connected: false, conversations: {}, messages: {}, receipts: {}, presence: {}, typing: {} });
+    set({ connected: false, conversations: {}, messages: {}, receipts: {}, presence: {}, typing: {}, hiddenLocally: {} });
   },
 }));
 
@@ -171,4 +308,36 @@ export function activeTypers(typing: Record<string, number> | undefined): string
   return Object.entries(typing)
     .filter(([, until]) => until > now)
     .map(([userId]) => userId);
+}
+
+/** Total unread across every conversation, for the tab badge and app icon. */
+export function unreadTotal(conversations: Record<string, Conversation>): number {
+  let n = 0;
+  for (const c of Object.values(conversations)) n += c.unreadCount;
+  return n;
+}
+
+/** One-line summary of a message for chat rows, replies and notifications. */
+export function previewOf(message: Pick<Message, "body" | "contentType" | "deleted"> | null | undefined): string {
+  if (!message) return "";
+  if (message.deleted) return "This message was deleted";
+  switch (message.contentType) {
+    case "image":
+      return message.body ? `📷 ${message.body}` : "📷 Photo";
+    case "audio":
+      return "🎤 Voice message";
+    case "file":
+      return message.body ? `📎 ${message.body}` : "📎 File";
+    default:
+      return message.body;
+  }
+}
+
+/** Display name and avatar for a conversation from the viewer's side. */
+export function conversationLabel(conversation: Conversation, meId: string): { name: string; avatarUrl: string | null; peerId: string | null } {
+  if (conversation.type === "group") {
+    return { name: conversation.name ?? "Group", avatarUrl: conversation.avatarUrl, peerId: null };
+  }
+  const peer = conversation.members.find((m) => m.id !== meId) ?? conversation.members[0];
+  return { name: peer?.displayName ?? "Unknown", avatarUrl: peer?.avatarUrl ?? null, peerId: peer?.id ?? null };
 }

@@ -1,8 +1,10 @@
 import { ServerEvent, type ClientEvent } from "@mapp/protocol";
 import { ensureFreshAccessToken, refreshAccessToken } from "./api";
+import { useCall } from "./callStore";
 import { useChat } from "./chatStore";
 import { WS_URL } from "./config";
 import { useSession } from "./session";
+import { setSocketSender } from "./wsSend";
 
 const PING_MS = 25_000;
 const MAX_BACKOFF_MS = 15_000;
@@ -81,6 +83,10 @@ class Realtime {
       if (event.type === "message.new") {
         this.send({ type: "message.ack", messageId: event.message.id, kind: "delivered" });
       }
+      if (event.type.startsWith("call.")) {
+        useCall.getState().handleEvent(event);
+        return;
+      }
       useChat.getState().handleEvent(event);
     };
 
@@ -123,3 +129,4 @@ class Realtime {
 }
 
 export const realtime = new Realtime();
+setSocketSender((event) => realtime.send(event));

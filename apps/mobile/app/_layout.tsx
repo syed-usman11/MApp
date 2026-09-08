@@ -6,12 +6,14 @@ import {
   PlusJakartaSans_800ExtraBold,
   useFonts,
 } from "@expo-google-fonts/plus-jakarta-sans";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { Platform } from "react-native";
-import { useChat } from "../src/chatStore";
+import { CallOverlay } from "../src/CallOverlay";
+import { unreadTotal, useChat } from "../src/chatStore";
+import { installNotificationHandler, onNotificationTap, registerForPush, setAppBadge, unregisterPush } from "../src/push";
 import { realtime } from "../src/realtime";
 import { useSession } from "../src/session";
 import { fonts } from "../src/theme";
@@ -19,6 +21,7 @@ import { useThemeStore } from "../src/themeStore";
 import { useTheme } from "../src/useTheme";
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+installNotificationHandler();
 
 /**
  * Two protected groups: the auth screens exist only while signed out, the app
@@ -27,7 +30,9 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
  * sign-out drops straight back to the welcome screen.
  */
 export default function RootLayout() {
+  const router = useRouter();
   const status = useSession((s) => s.status);
+  const unread = useChat((s) => unreadTotal(s.conversations));
   const load = useSession((s) => s.load);
   const loadTheme = useThemeStore((s) => s.load);
   const themeReady = useThemeStore((s) => s.hydrated);
@@ -48,11 +53,27 @@ export default function RootLayout() {
   useEffect(() => {
     if (status === "signedIn") {
       realtime.start();
+      void registerForPush();
     } else {
+      if (status === "signedOut") void unregisterPush();
       realtime.stop();
       useChat.getState().reset();
     }
   }, [status]);
+
+  // Keep the app icon badge in step with the unread total.
+  useEffect(() => {
+    if (status === "signedIn") void setAppBadge(unread);
+    else if (status === "signedOut") void setAppBadge(0);
+  }, [unread, status]);
+
+  // Tapping a notification opens the chat it came from.
+  useEffect(() => {
+    if (status !== "signedIn") return;
+    return onNotificationTap((tap) => {
+      if (tap.conversationId) router.push(`/chat/${tap.conversationId}`);
+    });
+  }, [status, router]);
 
   const ready = fontsLoaded && themeReady && status !== "loading";
   useEffect(() => {
@@ -94,9 +115,13 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: "fade" }} />
           <Stack.Screen name="chat/[id]" options={{ headerBackTitle: "Chats" }} />
           <Stack.Screen name="new-chat" options={{ title: "New chat", presentation: "modal", animation: "slide_from_bottom" }} />
+          <Stack.Screen name="new-group" options={{ title: "New group", presentation: "modal", animation: "slide_from_bottom" }} />
+          <Stack.Screen name="group/[id]" options={{ title: "Group info" }} />
+          <Stack.Screen name="search" options={{ title: "Search" }} />
           <Stack.Screen name="profile" options={{ title: "Your profile" }} />
         </Stack.Protected>
       </Stack>
+      {signedIn ? <CallOverlay /> : null}
     </>
   );
 }

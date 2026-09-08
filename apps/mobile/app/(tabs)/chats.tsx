@@ -5,7 +5,7 @@ import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown, ZoomIn } from "react-native-reanimated";
 import type { Conversation } from "@mapp/protocol";
 import { errorMessage } from "../../src/api";
-import { useChat } from "../../src/chatStore";
+import { conversationLabel, previewOf, useChat } from "../../src/chatStore";
 import { useTabBarSpace } from "../../src/GlassTabBar";
 import { useSession } from "../../src/session";
 import { fonts, radius, spacing } from "../../src/theme";
@@ -51,6 +51,7 @@ export default function Chats() {
     return Object.values(conversations)
       .filter((c) => {
         if (!q) return true;
+        if (c.type === "group") return (c.name ?? "").toLowerCase().includes(q) || c.members.some((m) => m.id !== me?.id && m.displayName.toLowerCase().includes(q));
         const peer = c.members.find((m) => m.id !== me?.id);
         return (peer?.displayName ?? "").toLowerCase().includes(q) || (peer?.username ?? "").toLowerCase().includes(q);
       })
@@ -68,6 +69,7 @@ export default function Chats() {
         }
         right={
           <>
+            <IconButton icon="search-outline" size={24} onPress={() => router.push("/search")} label="Search" />
             <IconButton icon={isDark ? "sunny-outline" : "moon-outline"} size={24} onPress={toggle} label="Toggle dark mode" />
             <IconButton icon="create-outline" size={26} onPress={() => router.push("/new-chat")} label="New chat" />
           </>
@@ -80,7 +82,7 @@ export default function Chats() {
         contentContainerStyle={[s.list, { paddingTop: topSpace + spacing.md, paddingBottom: bottomSpace }]}
         ListHeaderComponent={
           <Animated.View entering={FadeInDown.springify().damping(24).stiffness(140)} style={s.header}>
-            <Field icon="search-outline" pill placeholder="Search chats" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
+            <Field icon="search-outline" pill placeholder="Filter chats" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
             <ErrorText>{error}</ErrorText>
           </Animated.View>
         }
@@ -113,21 +115,27 @@ function ConversationRow({
 }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  const peer = conversation.members.find((m) => m.id !== meId) ?? conversation.members[0];
+  const label = conversationLabel(conversation, meId);
+  const peer = conversation.type === "direct" ? (conversation.members.find((m) => m.id !== meId) ?? conversation.members[0]) : undefined;
   const last = conversation.lastMessage;
-  const preview = last ? `${last.senderId === meId ? "You: " : ""}${last.body}` : "Say hello";
+  const senderName = last && conversation.type === "group" ? (conversation.members.find((m) => m.id === last.senderId)?.displayName.split(" ")[0] ?? "Someone") : null;
+  const preview = last
+    ? last.contentType === "system"
+      ? `${last.senderId === meId ? "You" : (senderName ?? "Someone")} ${last.body}`
+      : `${last.senderId === meId ? "You: " : senderName ? `${senderName}: ` : ""}${previewOf(last)}`
+    : "Say hello";
   const time = last ? formatTime(last.createdAt) : "";
   const unread = conversation.unreadCount > 0;
   return (
     <PressableScale onPress={onPress} scaleTo={0.98} style={s.row}>
-      <Avatar name={peer?.displayName ?? "?"} size={50} online={peer ? online[peer.id] : false} />
+      <Avatar name={label.name} size={50} online={peer ? online[peer.id] : false} uri={label.avatarUrl} />
       <View style={s.flex}>
         <View style={s.rowTop}>
           <View style={[s.nameRow, s.flex]}>
             <Text style={s.name} numberOfLines={1}>
-              {peer?.displayName ?? "Unknown"}
+              {label.name}
             </Text>
-            {peer?.verifiedCountry ? <Ionicons name="shield-checkmark" size={14} color={colors.primary} /> : null}
+            {conversation.type === "group" ? <Ionicons name="people" size={14} color={colors.muted} /> : peer?.verifiedCountry ? <Ionicons name="shield-checkmark" size={14} color={colors.primary} /> : null}
           </View>
           <Text style={[s.time, unread && s.timeUnread]}>{time}</Text>
         </View>

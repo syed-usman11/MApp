@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { Image as ExpoImage } from "expo-image";
 import type { ComponentProps, PropsWithChildren, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -283,7 +284,7 @@ export function Loading({ label }: { label?: string }) {
 
 const AVATAR_COLORS = ["#0B6E4F", "#1D4ED8", "#B45309", "#7C3AED", "#BE185D", "#0E7490", "#4D7C0F"];
 
-export function Avatar({ name, size = 44, online }: { name: string; size?: number; online?: boolean }) {
+export function Avatar({ name, size = 44, online, uri }: { name: string; size?: number; online?: boolean; uri?: string | null }) {
   const s = useStyles(makeStyles);
   let hash = 0;
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
@@ -296,8 +297,12 @@ export function Avatar({ name, size = 44, online }: { name: string; size?: numbe
     .join("");
   return (
     <View style={{ width: size, height: size }}>
-      <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
-        <Text style={[s.avatarText, { fontSize: size * 0.4 }]}>{initials || "?"}</Text>
+      <View style={[s.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg, overflow: "hidden" }]}>
+        {uri ? (
+          <ExpoImage source={{ uri }} style={{ width: size, height: size }} contentFit="cover" transition={120} />
+        ) : (
+          <Text style={[s.avatarText, { fontSize: size * 0.4 }]}>{initials || "?"}</Text>
+        )}
       </View>
       {online ? (
         <Animated.View entering={ZoomIn.springify().damping(24).stiffness(140)} style={[s.presenceDot, { width: size * 0.28, height: size * 0.28, borderRadius: size * 0.14 }]} />

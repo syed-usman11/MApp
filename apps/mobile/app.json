@@ -10,7 +10,14 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.mapp.mobile"
+      "bundleIdentifier": "app.mapp.mobile",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "package": "app.mapp.mobile",
@@ -20,7 +27,14 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "POST_NOTIFICATIONS",
+        "VIBRATE",
+        "READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -46,6 +60,34 @@
           "android": {
             "usesCleartextTraffic": true
           }
+        }
+      ],
+      "expo-image",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "MApp uses the microphone for voice messages and voice calls."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MApp needs your photos to send them in chats.",
+          "cameraPermission": "MApp uses the camera to take photos for chats."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0B6E4F",
+          "defaultChannel": "messages"
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "MApp uses the camera for video calls.",
+          "microphonePermission": "MApp uses the microphone for voice calls."
         }
       ]
     ]

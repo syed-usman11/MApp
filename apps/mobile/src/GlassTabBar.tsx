@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { unreadTotal, useChat } from "./chatStore";
 import { SPRING, fonts, layout, radius } from "./theme";
 import type { IconName } from "./ui";
 import { useStyles, useTheme, type Theme } from "./useTheme";
@@ -48,6 +49,7 @@ export function GlassTabBar({ state, navigation }: TabBarProps) {
   const s = useStyles(makeStyles);
   const { colors, glass } = useTheme();
   const [width, setWidth] = useState(0);
+  const unread = useChat((st) => unreadTotal(st.conversations));
   const count = state.routes.length;
   const tabWidth = width > 0 ? (width - PAD * 2 - GAP * (count - 1)) / count : 0;
 
@@ -85,6 +87,7 @@ export function GlassTabBar({ state, navigation }: TabBarProps) {
                 icon={focused ? meta.iconActive : meta.icon}
                 focused={focused}
                 color={focused ? colors.primary : colors.muted}
+                badge={route.name === "chats" ? unread : 0}
                 onPress={onPress}
                 style={s.tab}
                 labelStyle={[s.label, focused && { color: colors.primary }]}
@@ -102,6 +105,7 @@ function TabItem({
   icon,
   focused,
   color,
+  badge,
   onPress,
   style,
   labelStyle,
@@ -110,10 +114,12 @@ function TabItem({
   icon: IconName;
   focused: boolean;
   color: string;
+  badge: number;
   onPress: () => void;
   style: object;
   labelStyle: unknown;
 }) {
+  const s = useStyles(makeStyles);
   const scale = useSharedValue(1);
   useEffect(() => {
     scale.value = withSpring(focused ? 1.12 : 1, SPRING);
@@ -123,6 +129,11 @@ function TabItem({
     <Pressable onPress={onPress} accessibilityRole="tab" accessibilityState={{ selected: focused }} accessibilityLabel={label} style={style}>
       <Animated.View style={iconStyle}>
         <Ionicons name={icon} size={22} color={color} />
+        {badge > 0 ? (
+          <View style={s.badge} accessibilityLabel={`${badge} unread`}>
+            <Text style={s.badgeText}>{badge > 99 ? "99+" : badge}</Text>
+          </View>
+        ) : null}
       </Animated.View>
       <Text style={labelStyle as never}>{label}</Text>
     </Pressable>
@@ -147,4 +158,6 @@ const makeStyles = ({ colors, glass }: Theme) =>
     pill: { position: "absolute", top: PAD, bottom: PAD, left: 0, borderRadius: radius.pill, backgroundColor: glass.activePill },
     tab: { flex: 1, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, gap: 2 },
     label: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
+    badge: { position: "absolute", top: -6, right: -12, minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: colors.danger, alignItems: "center", justifyContent: "center" },
+    badgeText: { fontFamily: fonts.extrabold, fontSize: 10, color: "#fff" },
   });

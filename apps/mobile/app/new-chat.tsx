@@ -58,6 +58,10 @@ export default function NewChat() {
         <Subtitle>Pick someone from your contacts or find them by username.</Subtitle>
       </Reveal>
 
+      <Reveal delay={40}>
+        <Button title="New group" icon="people-outline" variant="secondary" onPress={() => router.push("/new-group")} />
+      </Reveal>
+
       <Reveal delay={80}>
         <Card>
           <Field
