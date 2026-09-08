@@ -7,6 +7,7 @@ import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { connectDb, type DbHandle } from "./db/index.js";
 import { AesGcmVault } from "./identity/vault.js";
+import { createMailer, ResendMailer, SmtpMailer } from "./mail/mailer.js";
 
 const baseEnv = {
   NODE_ENV: "test",
@@ -340,5 +341,42 @@ describe("groups, media, message actions, search, push and calls", () => {
     a.send({ type: "call.end", callId: ringing2.callId, reason: "hangup" });
     expect(await a.nextOfType("call.ended")).toMatchObject({ callId: ringing2.callId });
     a.close();
+  });
+});
+
+describe("password reset email transport", () => {
+  it("refuses to hand out reset codes in production when no transport is configured", async () => {
+    const config = loadConfig({ ...baseEnv, NODE_ENV: "production", IDENTITY_PROVIDERS: "mock" });
+    const dbHandle = await connectDb();
+    const registry = new ProviderRegistry().register(new MockProvider());
+    const app = await buildApp({ config, db: dbHandle.db, registry, vault: AesGcmVault.deriveFrom("t"), logger: false });
+    await app.ready();
+    try {
+      const res = await app.inject({ method: "POST", url: "/v1/auth/forgot", payload: { email: "someone@example.com" } });
+      expect(res.statusCode).toBe(503);
+      expect(res.json().error.code).toBe("MAIL_NOT_CONFIGURED");
+    } finally {
+      await app.close();
+      await dbHandle.close();
+    }
+  });
+
+  it("sends through Resend when an API key is configured", async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fakeFetch: typeof fetch = async (url, init) => {
+      calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ id: "email_1" }), { status: 200 });
+    };
+    const mailer = new ResendMailer("re_test", "MApp <no-reply@example.com>", fakeFetch);
+    await mailer.send({ to: "someone@example.com", subject: "Code", text: "123456" });
+    expect(calls[0]?.url).toBe("https://api.resend.com/emails");
+    expect(calls[0]?.body).toMatchObject({ from: "MApp <no-reply@example.com>", to: ["someone@example.com"], subject: "Code" });
+  });
+
+  it("picks the transport from configuration", () => {
+    const log = { info: () => undefined, warn: () => undefined, error: () => undefined };
+    expect(createMailer({}, log, false).delivers).toBe(false);
+    expect(createMailer({ resendApiKey: "re_x" }, log, true)).toBeInstanceOf(ResendMailer);
+    expect(createMailer({ smtpHost: "smtp.example.com", smtpPort: 465, smtpUser: "u", smtpPass: "p" }, log, true)).toBeInstanceOf(SmtpMailer);
   });
 });

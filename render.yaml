@@ -42,3 +42,16 @@ services:
         value: "false"
       - key: REGISTRATION_MIN_ASSURANCE
         value: low
+      # Password reset emails. Fill these in the dashboard (Environment tab); see .env.example.
+      - key: MAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false

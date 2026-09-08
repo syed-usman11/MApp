@@ -7,7 +7,7 @@ import { authRoutes } from "./auth/routes.js";
 import { AuthService } from "./auth/service.js";
 import { TokenService } from "./auth/tokens.js";
 import { CallService } from "./calls/service.js";
-import { ConsoleMailer, type Mailer } from "./mail/mailer.js";
+import { createMailer, type Mailer } from "./mail/mailer.js";
 import { ChatService } from "./chat/service.js";
 import { chatRoutes } from "./chat/routes.js";
 import { contactRoutes } from "./contacts/routes.js";
@@ -54,7 +54,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     sessionTtlSeconds: config.verificationTtlSeconds,
     minAssurance: config.registrationMinAssurance,
   });
-  const mailer = deps.mailer ?? new ConsoleMailer((obj, msg) => app.log.info(obj, msg));
+  const mailer = deps.mailer ?? createMailer(config.mail, app.log, config.nodeEnv === "production");
   const auth = new AuthService(db, tokens, mailer, {
     devMode: config.devMode,
     resetTtlSeconds: config.passwordResetTtlSeconds,

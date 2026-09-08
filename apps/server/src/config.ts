@@ -35,6 +35,14 @@ const EnvSchema = z.object({
   MEDIA_MAX_MB: z.coerce.number().positive().default(10),
   /** How long a signed media link stays valid. */
   MEDIA_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 3600),
+  /** Email transport for password reset codes. Resend wins over SMTP when both are set. */
+  MAIL_FROM: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_SECURE: z.string().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
   /** Set to "false" to skip the Expo push service entirely (tests, local dev). */
   PUSH_ENABLED: z.string().optional(),
   DIGILOCKER_CLIENT_ID: z.string().optional(),
@@ -71,6 +79,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     appRedirectUrl: e.APP_REDIRECT_URL,
     allowedReturnUrls,
     identityProviders: csv(e.IDENTITY_PROVIDERS),
+    mail: {
+      from: e.MAIL_FROM,
+      resendApiKey: e.RESEND_API_KEY,
+      smtpHost: e.SMTP_HOST,
+      smtpPort: e.SMTP_PORT,
+      smtpSecure: e.SMTP_SECURE === undefined ? undefined : e.SMTP_SECURE === "true",
+      smtpUser: e.SMTP_USER,
+      smtpPass: e.SMTP_PASS,
+    },
     mediaMaxBytes: Math.round(e.MEDIA_MAX_MB * 1024 * 1024),
     mediaLinkTtlSeconds: e.MEDIA_LINK_TTL_SECONDS,
     pushEnabled: e.PUSH_ENABLED !== undefined ? e.PUSH_ENABLED === "true" : e.NODE_ENV !== "test",

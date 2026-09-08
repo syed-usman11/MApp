@@ -147,6 +147,9 @@ export class AuthService {
 
   /** Always answers OK so the response does not reveal whether the email is registered. */
   async forgotPassword(email: string): Promise<ForgotPasswordResponse> {
+    if (!this.mailer.delivers && !this.opts.devMode) {
+      throw new AppError(503, "MAIL_NOT_CONFIGURED", "Password reset email is not set up on this server yet. Ask the administrator to configure SMTP or Resend.");
+    }
     const [cred] = await this.db.select().from(schema.emailCredentials).where(eq(schema.emailCredentials.email, email)).limit(1);
     if (!cred) return { ok: true };
 

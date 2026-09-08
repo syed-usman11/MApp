@@ -78,7 +78,7 @@ export default function Forgot() {
         <Brand size={56} horizontal />
         <Reveal>
           <Title>Check your email</Title>
-          <Subtitle>If {email.trim()} has an account, we sent it a 6-digit code. Enter it below with your new password.</Subtitle>
+          <Subtitle>If {email.trim()} has an account, a 6-digit code is on its way. Check your inbox and the spam folder, then enter it below with your new password.</Subtitle>
         </Reveal>
         <Reveal delay={100}>
           <Card>

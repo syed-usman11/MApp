@@ -48,6 +48,7 @@ class FakeRedirectProvider implements NationalIdProvider {
 }
 
 class CapturingMailer implements Mailer {
+  readonly delivers = true;
   sent: MailMessage[] = [];
   async send(message: MailMessage) {
     this.sent.push(message);
