@@ -356,7 +356,11 @@ export default function Thread() {
       ) : null}
 
       <View style={s.composer}>
-        {!editing ? <IconButton icon="add-circle-outline" size={28} onPress={() => setAttachOpen(true)} label="Attach" /> : null}
+        {!editing ? (
+          <PressableScale onPress={() => setAttachOpen(true)} scaleTo={0.85} style={s.attachButton} accessibilityLabel="Attach" accessibilityRole="button">
+            <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
+          </PressableScale>
+        ) : null}
         <TextInput
           ref={inputRef}
           style={s.input}
@@ -595,7 +599,7 @@ const makeStyles = ({ colors }: Theme) =>
     headerTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.text, flexShrink: 1 },
     headerSubtitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     headerSubtitle: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, flexShrink: 1 },
-    headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+    headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginRight: spacing.sm },
     notice: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
     list: { padding: spacing.md, gap: 6 },
     empty: { alignItems: "center", gap: spacing.xs, transform: [{ scaleY: -1 }], paddingVertical: spacing.xl },
@@ -617,7 +621,7 @@ const makeStyles = ({ colors }: Theme) =>
     tombstoneText: { fontFamily: fonts.regular, fontSize: 15, color: colors.muted, fontStyle: "italic" },
     meta: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 4, marginTop: 2 },
     time: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted },
-    reactions: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: -8, paddingHorizontal: 6 },
+    reactions: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 3, paddingHorizontal: 4 },
     reactionsMine: { justifyContent: "flex-end" },
     reactionsTheirs: { justifyContent: "flex-start" },
     reactionChip: { flexDirection: "row", alignItems: "center", backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 2 },
@@ -636,7 +640,8 @@ const makeStyles = ({ colors }: Theme) =>
     banner: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
     bannerTitle: { fontFamily: fonts.bold, fontSize: 12, color: colors.primary },
     bannerBody: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    composer: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, padding: spacing.md, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
+    composer: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
+    attachButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
     input: {
       flex: 1,
       minHeight: 44,
@@ -645,11 +650,14 @@ const makeStyles = ({ colors }: Theme) =>
       borderColor: colors.border,
       borderRadius: radius.pill,
       paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.sm + 2,
+      paddingTop: Platform.OS === "ios" ? 12 : 10,
+      paddingBottom: Platform.OS === "ios" ? 12 : 10,
       fontFamily: fonts.regular,
       fontSize: 16,
+      lineHeight: 20,
       color: colors.text,
       backgroundColor: colors.bg,
+      textAlignVertical: "center",
     },
     sendButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
     sendDisabled: { backgroundColor: colors.border },

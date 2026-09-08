@@ -130,7 +130,7 @@ const makeStyles = ({ colors }: Theme) =>
     recordWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
     micButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: "center", justifyContent: "center" },
     disabled: { opacity: 0.4 },
-    recordingPill: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, height: 36, borderRadius: radius.pill, backgroundColor: colors.dangerSoft },
+    recordingPill: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, height: 44, borderRadius: radius.pill, backgroundColor: colors.dangerSoft },
     recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.danger },
     recText: { fontFamily: fonts.bold, color: colors.danger, fontSize: 13 },
     recHint: { fontFamily: fonts.regular, color: colors.muted, fontSize: 12 },

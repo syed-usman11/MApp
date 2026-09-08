@@ -95,6 +95,7 @@ export default function RootLayout() {
           headerTitleStyle: { fontFamily: fonts.bold, color: colors.text },
           headerBackTitleStyle: { fontFamily: fonts.medium },
           headerShadowVisible: false,
+          headerTitleAlign: "left",
           contentStyle: { backgroundColor: colors.bg },
           animation: Platform.OS === "android" ? "slide_from_right" : "default",
           animationDuration: 260,
