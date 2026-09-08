@@ -24,7 +24,12 @@ const PRODUCTION_API_URL = "https://mapp-api-2p5c.onrender.com";
 
 export const IS_DEV_BUILD = typeof __DEV__ !== "undefined" && __DEV__;
 
-export const API_URL = (
-  process.env.EXPO_PUBLIC_API_URL ?? (IS_DEV_BUILD ? `http://${devHost()}:4000` : PRODUCTION_API_URL)
-).replace(/\/+$/, "");
+/** Tolerate copy-paste noise in the env value: surrounding whitespace or quotes, trailing commas or slashes. */
+function cleanUrl(raw: string): string {
+  return raw.trim().replace(/^["']+|["']+$/g, "").replace(/[\s,/]+$/, "");
+}
+
+const configured = process.env.EXPO_PUBLIC_API_URL ? cleanUrl(process.env.EXPO_PUBLIC_API_URL) : "";
+
+export const API_URL = configured || (IS_DEV_BUILD ? `http://${devHost()}:4000` : PRODUCTION_API_URL);
 export const WS_URL = `${API_URL.replace(/^http/, "ws")}/ws`;
