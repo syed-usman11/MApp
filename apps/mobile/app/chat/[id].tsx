@@ -150,7 +150,7 @@ export default function Thread() {
         data={data}
         keyExtractor={(m) => m.id}
         renderItem={({ item, index }) => (
-          <Animated.View entering={FadeInUp.delay(Math.min(index, 6) * 30).springify().damping(18)}>
+          <Animated.View entering={FadeInUp.delay(Math.min(index, 6) * 30).springify().damping(24).stiffness(140)}>
             <Bubble message={item} mine={item.senderId === me?.id} receipt={receipts[item.id]} />
           </Animated.View>
         )}

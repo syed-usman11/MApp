@@ -79,19 +79,19 @@ export default function Chats() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} progressViewOffset={topSpace} />}
         contentContainerStyle={[s.list, { paddingTop: topSpace + spacing.md, paddingBottom: bottomSpace }]}
         ListHeaderComponent={
-          <Animated.View entering={FadeInDown.springify().damping(18)} style={s.header}>
+          <Animated.View entering={FadeInDown.springify().damping(24).stiffness(140)} style={s.header}>
             <Field icon="search-outline" pill placeholder="Search chats" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
             <ErrorText>{error}</ErrorText>
           </Animated.View>
         }
         ListEmptyComponent={
-          <Animated.View entering={ZoomIn.delay(120).springify().damping(16)} style={s.empty}>
+          <Animated.View entering={ZoomIn.delay(120).springify().damping(24).stiffness(140)} style={s.empty}>
             <Ionicons name="chatbubbles-outline" size={44} color={colors.border} />
             <Muted>{query ? "No chats match your search." : "No chats yet. Tap the compose icon to start one."}</Muted>
           </Animated.View>
         }
         renderItem={({ item, index }) => (
-          <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 45).springify().damping(18)}>
+          <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 45).springify().damping(24).stiffness(140)}>
             <ConversationRow conversation={item} meId={me?.id ?? ""} online={presence} onPress={() => router.push(`/chat/${item.id}`)} />
           </Animated.View>
         )}
@@ -136,7 +136,7 @@ function ConversationRow({
             {preview}
           </Text>
           {unread ? (
-            <Animated.View entering={ZoomIn.springify()} style={s.badge}>
+            <Animated.View entering={ZoomIn.springify().damping(24).stiffness(140)} style={s.badge}>
               <Text style={s.badgeText}>{conversation.unreadCount}</Text>
             </Animated.View>
           ) : null}

@@ -67,7 +67,7 @@ export function PressableScale({
 /** Fades and slides content up into place. Stagger with `delay`. */
 export function Reveal({ delay = 0, children, style }: PropsWithChildren<{ delay?: number; style?: StyleProp<ViewStyle> }>) {
   return (
-    <Animated.View entering={FadeInDown.delay(delay).springify().damping(18).stiffness(160)} style={style}>
+    <Animated.View entering={FadeInDown.delay(delay).springify().damping(24).stiffness(140)} style={style}>
       {children}
     </Animated.View>
   );
@@ -94,7 +94,7 @@ export function Brand({ size = 64, horizontal = false }: { size?: number; horizo
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
   return (
-    <Animated.View entering={ZoomIn.springify().damping(14)} style={[s.brand, horizontal ? s.brandRow : s.brandColumn]}>
+    <Animated.View entering={ZoomIn.springify().damping(24).stiffness(140)} style={[s.brand, horizontal ? s.brandRow : s.brandColumn]}>
       <View style={[s.brandMark, { width: size, height: size, borderRadius: size * 0.3 }]}>
         <Ionicons name="chatbubbles" size={size * 0.52} color={colors.onPrimary} />
       </View>
@@ -128,7 +128,7 @@ export function ErrorText({ children }: { children?: string | null }) {
   const { colors } = useTheme();
   if (!children) return null;
   return (
-    <Animated.View entering={FadeInDown.springify().damping(18)} style={s.errorBox}>
+    <Animated.View entering={FadeInDown.springify().damping(24).stiffness(140)} style={s.errorBox}>
       <Ionicons name="alert-circle" size={18} color={colors.danger} />
       <Text style={s.errorText}>{children}</Text>
     </Animated.View>
@@ -140,7 +140,7 @@ export function InfoText({ children, icon = "information-circle" }: { children?:
   const { colors } = useTheme();
   if (!children) return null;
   return (
-    <Animated.View entering={FadeInDown.springify().damping(18)} style={s.infoBox}>
+    <Animated.View entering={FadeInDown.springify().damping(24).stiffness(140)} style={s.infoBox}>
       <Ionicons name={icon} size={18} color={colors.primary} />
       <Text style={s.infoText}>{children}</Text>
     </Animated.View>
@@ -300,7 +300,7 @@ export function Avatar({ name, size = 44, online }: { name: string; size?: numbe
         <Text style={[s.avatarText, { fontSize: size * 0.4 }]}>{initials || "?"}</Text>
       </View>
       {online ? (
-        <Animated.View entering={ZoomIn.springify()} style={[s.presenceDot, { width: size * 0.28, height: size * 0.28, borderRadius: size * 0.14 }]} />
+        <Animated.View entering={ZoomIn.springify().damping(24).stiffness(140)} style={[s.presenceDot, { width: size * 0.28, height: size * 0.28, borderRadius: size * 0.14 }]} />
       ) : null}
     </View>
   );

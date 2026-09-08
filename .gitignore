@@ -14,3 +14,6 @@ apps/mobile/web-build/
 # Claude Code local config
 .claude/
 **/.claude/
+
+# Local APK builds
+builds/

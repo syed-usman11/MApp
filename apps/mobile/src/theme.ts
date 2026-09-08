@@ -110,4 +110,5 @@ export const radius = { sm: 10, md: 14, lg: 20, xl: 26, pill: 999 };
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
 
 /** Shared spring used for taps and pills so the whole app moves the same way. */
-export const SPRING = { damping: 16, stiffness: 220, mass: 0.6 };
+// Near critical damping: quick settle, no overshoot.
+export const SPRING = { damping: 24, stiffness: 220, mass: 0.6 };
