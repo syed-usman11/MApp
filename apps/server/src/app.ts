@@ -6,6 +6,7 @@ import { IdentityVerificationError, type ProviderRegistry } from "@mapp/identity
 import { authRoutes } from "./auth/routes.js";
 import { AuthService } from "./auth/service.js";
 import { TokenService } from "./auth/tokens.js";
+import { CallService } from "./calls/service.js";
 import { ConsoleMailer, type Mailer } from "./mail/mailer.js";
 import { ChatService } from "./chat/service.js";
 import { chatRoutes } from "./chat/routes.js";
@@ -16,6 +17,9 @@ import { AppError } from "./errors.js";
 import { identityRoutes } from "./identity/routes.js";
 import { IdentityService } from "./identity/service.js";
 import type { Vault } from "./identity/vault.js";
+import { mediaRoutes } from "./media/routes.js";
+import { MediaService } from "./media/service.js";
+import { PushService } from "./push/service.js";
 import { userRoutes } from "./users/routes.js";
 import { registerGateway } from "./ws/gateway.js";
 import { Hub } from "./ws/hub.js";
@@ -27,6 +31,8 @@ export interface AppDeps {
   vault: Vault;
   mailer?: Mailer;
   logger?: boolean;
+  /** Test seam for the Expo push endpoint. */
+  pushFetch?: typeof fetch;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -35,6 +41,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   await app.register(cors, { origin: true, methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
+
+  // File uploads arrive as raw bodies with their real MIME type (image/*, audio/*, application/pdf, ...).
+  app.addContentTypeParser(/^(?!application\/json\b)(?!text\/plain\b)[\w.+-]+\/[\w.+-]+/i, { parseAs: "buffer" }, (_req, body, done) => done(null, body));
 
   const tokens = new TokenService(config.jwtSecret, config.accessTokenTtlSeconds);
   const identity = new IdentityService(db, registry, vault, tokens, {
@@ -52,8 +61,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     maxLoginFailures: config.loginMaxFailures,
     lockoutSeconds: config.loginLockoutSeconds,
   });
-  const chat = new ChatService(db);
+  const media = new MediaService(db, {
+    publicUrl: config.publicUrl,
+    signingSecret: config.jwtSecret,
+    maxBytes: config.mediaMaxBytes,
+    linkTtlSeconds: config.mediaLinkTtlSeconds,
+  });
+  const chat = new ChatService(db, media);
   const hub = new Hub();
+  const push = new PushService(db, app.log, deps.pushFetch, config.pushEnabled);
+  const calls = new CallService(db);
 
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError) {
@@ -67,9 +84,12 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       const status = err.code === "PROVIDER_UNAVAILABLE" ? 502 : err.code === "PROVIDER_DENIED" ? 403 : 400;
       return reply.status(status).send({ error: { code: err.code, message: err.message } });
     }
-    const e = err as { statusCode?: unknown; message?: unknown };
+    const e = err as { statusCode?: unknown; code?: unknown; message?: unknown };
     const status = typeof e.statusCode === "number" ? e.statusCode : 500;
     if (status >= 500) req.log.error({ err }, "unhandled error");
+    if (e.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+      return reply.status(413).send({ error: { code: "TOO_LARGE", message: `Files are limited to ${Math.round(config.mediaMaxBytes / (1024 * 1024))} MB` } });
+    }
     const message = status >= 500 ? "Internal error" : typeof e.message === "string" ? e.message : "Bad request";
     return reply.status(status).send({ error: { code: status >= 500 ? "INTERNAL" : "BAD_REQUEST", message } });
   });
@@ -80,8 +100,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   authRoutes(app, auth, tokens, { idVerificationRequired: config.idVerificationRequired });
   userRoutes(app, db, tokens);
   contactRoutes(app, db, tokens);
-  chatRoutes(app, chat, tokens);
-  registerGateway(app, { hub, chat, tokens });
+  mediaRoutes(app, media, tokens, config.mediaMaxBytes);
+  chatRoutes(app, { chat, tokens, hub, push, calls });
+  registerGateway(app, { hub, chat, tokens, push, calls });
+
+  app.addHook("onClose", async () => calls.clear());
 
   return app;
 }

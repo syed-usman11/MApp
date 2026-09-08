@@ -31,6 +31,12 @@ const EnvSchema = z.object({
   PASSWORD_RESET_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(10),
   LOGIN_LOCKOUT_SECONDS: z.coerce.number().int().positive().default(900),
+  /** Upload cap for photos, files and voice notes. */
+  MEDIA_MAX_MB: z.coerce.number().positive().default(10),
+  /** How long a signed media link stays valid. */
+  MEDIA_LINK_TTL_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 3600),
+  /** Set to "false" to skip the Expo push service entirely (tests, local dev). */
+  PUSH_ENABLED: z.string().optional(),
   DIGILOCKER_CLIENT_ID: z.string().optional(),
   DIGILOCKER_CLIENT_SECRET: z.string().optional(),
   DIGILOCKER_BASE_URL: z.string().url().optional(),
@@ -65,6 +71,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     appRedirectUrl: e.APP_REDIRECT_URL,
     allowedReturnUrls,
     identityProviders: csv(e.IDENTITY_PROVIDERS),
+    mediaMaxBytes: Math.round(e.MEDIA_MAX_MB * 1024 * 1024),
+    mediaLinkTtlSeconds: e.MEDIA_LINK_TTL_SECONDS,
+    pushEnabled: e.PUSH_ENABLED !== undefined ? e.PUSH_ENABLED === "true" : e.NODE_ENV !== "test",
     registrationMinAssurance: e.REGISTRATION_MIN_ASSURANCE,
     idVerificationRequired: e.ID_VERIFICATION_REQUIRED === "true",
     devMode: e.NODE_ENV !== "production",

@@ -22,6 +22,13 @@
       "when": 1788812985412,
       "tag": "0002_salty_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788866427060,
+      "tag": "0003_features",
+      "breakpoints": true
     }
   ]
 }

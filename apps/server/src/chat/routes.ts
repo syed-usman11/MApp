@@ -1,10 +1,23 @@
 import type { FastifyInstance } from "fastify";
-import { CreateDirectConversationRequest, Id, ListMessagesQuery } from "@mapp/protocol";
+import {
+  AddMembersRequest,
+  CreateDirectConversationRequest,
+  CreateGroupRequest,
+  Id,
+  ListMessagesQuery,
+  RegisterPushTokenRequest,
+  SearchQuery,
+  UpdateGroupRequest,
+} from "@mapp/protocol";
 import { authOf, requireAuth } from "../auth/plugin.js";
 import type { TokenService } from "../auth/tokens.js";
+import type { CallService } from "../calls/service.js";
+import type { PushService } from "../push/service.js";
+import type { Hub } from "../ws/hub.js";
 import type { ChatService } from "./service.js";
 
-export function chatRoutes(app: FastifyInstance, chat: ChatService, tokens: TokenService) {
+export function chatRoutes(app: FastifyInstance, deps: { chat: ChatService; tokens: TokenService; hub: Hub; push: PushService; calls: CallService }) {
+  const { chat, tokens, hub, push, calls } = deps;
   const auth = { preHandler: requireAuth(tokens) };
 
   app.get("/v1/conversations", auth, async (req) => {
@@ -18,9 +31,97 @@ export function chatRoutes(app: FastifyInstance, chat: ChatService, tokens: Toke
     return chat.getOrCreateDirect(userId, body.username);
   });
 
+  app.post("/v1/conversations/group", auth, async (req) => {
+    const { userId } = authOf(req);
+    const body = CreateGroupRequest.parse(req.body);
+    const conversation = await chat.createGroup(userId, body.name, body.memberIds);
+    await announce(conversation.id, userId);
+    return conversation;
+  });
+
+  app.get<{ Params: { id: string } }>("/v1/conversations/:id", auth, async (req) => {
+    const { userId } = authOf(req);
+    return chat.conversationFor(userId, Id.parse(req.params.id));
+  });
+
+  app.patch<{ Params: { id: string } }>("/v1/conversations/:id", auth, async (req) => {
+    const { userId } = authOf(req);
+    const conversationId = Id.parse(req.params.id);
+    const body = UpdateGroupRequest.parse(req.body);
+    const conversation = await chat.updateGroup(userId, conversationId, body);
+    await announce(conversationId, userId);
+    return conversation;
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/conversations/:id/members", auth, async (req) => {
+    const { userId } = authOf(req);
+    const conversationId = Id.parse(req.params.id);
+    const body = AddMembersRequest.parse(req.body);
+    const { conversation } = await chat.addMembers(userId, conversationId, body.memberIds);
+    await announce(conversationId, userId);
+    return conversation;
+  });
+
+  app.delete<{ Params: { id: string; userId: string } }>("/v1/conversations/:id/members/:userId", auth, async (req) => {
+    const { userId } = authOf(req);
+    const conversationId = Id.parse(req.params.id);
+    const targetId = Id.parse(req.params.userId);
+    const { conversation, members } = await chat.removeMember(userId, conversationId, targetId);
+    if (conversation) {
+      for (const memberId of members) {
+        const view = await chat.conversationFor(memberId, conversationId).catch(() => null);
+        if (view) hub.send(memberId, { type: "conversation.updated", conversation: view, removed: false });
+      }
+      hub.send(targetId, { type: "conversation.updated", conversation, removed: true });
+    }
+    return { ok: true };
+  });
+
   app.get<{ Params: { id: string } }>("/v1/conversations/:id/messages", auth, async (req) => {
     const { userId } = authOf(req);
     const conversationId = Id.parse(req.params.id);
     return chat.listMessages(userId, conversationId, ListMessagesQuery.parse(req.query));
   });
+
+  app.get("/v1/search", auth, async (req) => {
+    const { userId } = authOf(req);
+    const q = SearchQuery.parse(req.query);
+    return chat.search(userId, q.q, q.limit);
+  });
+
+  app.get("/v1/unread", auth, async (req) => {
+    const { userId } = authOf(req);
+    return { total: await chat.unreadTotal(userId) };
+  });
+
+  app.post("/v1/devices/push-token", auth, async (req) => {
+    const { userId, deviceId } = authOf(req);
+    const body = RegisterPushTokenRequest.parse(req.body);
+    await push.registerToken(userId, deviceId, body.token);
+    return { ok: true };
+  });
+
+  app.get("/v1/calls", auth, async (req) => {
+    const { userId } = authOf(req);
+    return { calls: await calls.history(userId) };
+  });
+
+  /** Push each member their own view of a changed conversation (unread counts differ per member). */
+  async function announce(conversationId: string, actorId: string) {
+    const members = await chat.memberIds(conversationId);
+    for (const memberId of members) {
+      const view = await chat.conversationFor(memberId, conversationId).catch(() => null);
+      if (view) hub.send(memberId, { type: "conversation.updated", conversation: view, removed: false });
+    }
+    const conversation = await chat.conversationFor(actorId, conversationId);
+    const actor = conversation.members.find((m) => m.id === actorId);
+    if (conversation.type === "group" && actor) {
+      const offline = members.filter((id) => id !== actorId && !hub.isOnline(id));
+      push.notify(offline, {
+        title: conversation.name ?? "Group",
+        body: `${actor.displayName} updated the group`,
+        data: { conversationId },
+      });
+    }
+  }
 }

@@ -167,11 +167,39 @@ export const verificationSessions = pgTable("verification_sessions", {
   expiresAt: ts("expires_at").notNull(),
 });
 
+/**
+ * Uploaded photos, files and voice notes. Bytes live in the row so the free
+ * tier needs no object store; swap `data` for `storageKey` when moving to S3/R2.
+ */
+export const media = pgTable(
+  "media",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    mime: text("mime").notNull(),
+    name: text("name").notNull(),
+    size: integer("size").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    durationMs: integer("duration_ms"),
+    data: bytea("data"),
+    storageKey: text("storage_key"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("media_owner_idx").on(t.ownerId)],
+);
+
 export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
   type: conversationType("type").notNull(),
   /** For direct chats: the two user ids sorted and joined, so a pair has exactly one conversation. */
   directKey: text("direct_key").unique(),
+  /** Groups only. */
+  name: text("name"),
+  avatarMediaId: uuid("avatar_media_id").references(() => media.id, { onDelete: "set null" }),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 
@@ -184,11 +212,24 @@ export const conversationMembers = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /** "admin" | "member". Direct chats leave everyone a member. */
+    role: text("role").notNull().default("member"),
     joinedAt: ts("joined_at").notNull().defaultNow(),
     lastReadAt: ts("last_read_at"),
   },
   (t) => [primaryKey({ columns: [t.conversationId, t.userId] }), index("conversation_members_user_idx").on(t.userId)],
 );
+
+/** Attachment metadata stored with a message. The bytes are in `media`. */
+export interface AttachmentRecord {
+  mediaId: string;
+  mime: string;
+  name: string;
+  size: number;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+}
 
 export const messages = pgTable(
   "messages",
@@ -201,11 +242,71 @@ export const messages = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     body: text("body").notNull(),
+    /** text | image | file | audio | system */
     contentType: text("content_type").notNull().default("text"),
+    attachment: jsonb("attachment").$type<AttachmentRecord>(),
+    replyToId: uuid("reply_to_id"),
     clientId: text("client_id"),
+    editedAt: ts("edited_at"),
+    /** Set by "delete for everyone"; the row stays so replies and receipts keep resolving. */
+    deletedAt: ts("deleted_at"),
     createdAt: ts("created_at").notNull().defaultNow(),
   },
   (t) => [index("messages_conversation_created_idx").on(t.conversationId, t.createdAt)],
+);
+
+/** "Delete for me": hides a message from one member only. */
+export const messageHidden = pgTable(
+  "message_hidden",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId] })],
+);
+
+/** One reaction per user per message; re-reacting replaces the emoji. */
+export const messageReactions = pgTable(
+  "message_reactions",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.messageId, t.userId] })],
+);
+
+/** Voice call log, one row per call attempt. Signalling itself is over the socket. */
+export const calls = pgTable(
+  "calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    callerId: uuid("caller_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    calleeId: uuid("callee_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** ringing | answered | ended | missed | declined | failed */
+    status: text("status").notNull().default("ringing"),
+    startedAt: ts("started_at").notNull().defaultNow(),
+    answeredAt: ts("answered_at"),
+    endedAt: ts("ended_at"),
+  },
+  (t) => [index("calls_conversation_idx").on(t.conversationId), index("calls_caller_idx").on(t.callerId), index("calls_callee_idx").on(t.calleeId)],
 );
 
 export const messageReceipts = pgTable(
