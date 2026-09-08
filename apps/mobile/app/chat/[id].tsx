@@ -8,7 +8,8 @@ import type { Attachment, Conversation, Member, ReplyPreview } from "@mapp/proto
 import { errorMessage } from "../../src/api";
 import { useCall } from "../../src/callStore";
 import { activeTypers, conversationLabel, previewOf, useChat, type LocalMessage } from "../../src/chatStore";
-import { formatBytes, pickDocument, pickImage, takePhoto, uploadFile, type LocalFile } from "../../src/media";
+import { formatBytes, formatDuration, kindOfMime, pickDocument, pickMedia, takePhoto, uploadFile, type LocalFile } from "../../src/media";
+import { MediaViewer, type ViewerItem } from "../../src/MediaViewer";
 import { realtime } from "../../src/realtime";
 import { useSession } from "../../src/session";
 import { fonts, radius, spacing } from "../../src/theme";
@@ -48,6 +49,7 @@ export default function Thread() {
   const [editing, setEditing] = useState<LocalMessage | null>(null);
   const [actionsFor, setActionsFor] = useState<LocalMessage | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
   const typingSentAt = useRef(0);
   const lastReadId = useRef<string | null>(null);
   const inputRef = useRef<TextInput>(null);
@@ -155,7 +157,7 @@ export default function Thread() {
     }
   }
 
-  async function sendFile(file: LocalFile, kind: "image" | "file" | "audio") {
+  async function sendFile(file: LocalFile, kind: "image" | "video" | "file" | "audio") {
     if (!me) return;
     const clientId = newClientId();
     const caption = kind === "audio" ? "" : text.trim();
@@ -187,10 +189,9 @@ export default function Thread() {
   async function attach(source: "library" | "camera" | "file") {
     setAttachOpen(false);
     try {
-      const file = source === "library" ? await pickImage() : source === "camera" ? await takePhoto() : await pickDocument();
+      const file = source === "library" ? await pickMedia() : source === "camera" ? await takePhoto() : await pickDocument();
       if (!file) return;
-      const kind = file.mime.startsWith("image/") ? "image" : file.mime.startsWith("audio/") ? "audio" : "file";
-      await sendFile(file, kind);
+      await sendFile(file, kindOfMime(file.mime));
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -230,6 +231,18 @@ export default function Thread() {
     if (!conversation || !peer) return;
     void startCall(conversation.id, peer);
   }
+
+  const viewingMessage = viewing ? (messages ?? []).find((m) => m.id === viewing) : undefined;
+  const viewerItem: ViewerItem | null =
+    viewingMessage?.attachment && !viewingMessage.deleted
+      ? {
+          attachment: viewingMessage.attachment,
+          senderName: viewingMessage.senderId === meId ? "You" : (membersById.get(viewingMessage.senderId)?.displayName ?? "Unknown"),
+          sentAt: viewingMessage.createdAt,
+          reactions: viewingMessage.reactions,
+          caption: viewingMessage.body || undefined,
+        }
+      : null;
 
   if (!loaded) return <Loading />;
 
@@ -305,6 +318,7 @@ export default function Thread() {
                 meId={meId}
                 onLongPress={() => (item.deleted || item.pending ? undefined : setActionsFor(item))}
                 onPressReaction={(emoji) => react(item, emoji)}
+                onOpenMedia={() => (item.pending ? undefined : setViewing(item.id))}
               />
             </Animated.View>
           );
@@ -363,8 +377,10 @@ export default function Thread() {
         )}
       </View>
 
+      <MediaViewer item={viewerItem} meId={meId} onClose={() => setViewing(null)} onReact={(emoji) => viewingMessage && react(viewingMessage, emoji)} />
+
       <Sheet visible={attachOpen} onClose={() => setAttachOpen(false)}>
-        <SheetItem icon="images-outline" label="Photo library" onPress={() => void attach("library")} />
+        <SheetItem icon="images-outline" label="Photo or video" onPress={() => void attach("library")} />
         {Platform.OS !== "web" ? <SheetItem icon="camera-outline" label="Take a photo" onPress={() => void attach("camera")} /> : null}
         <SheetItem icon="document-outline" label="File" onPress={() => void attach("file")} />
       </Sheet>
@@ -386,7 +402,18 @@ export default function Thread() {
             {actionsFor.senderId === meId && actionsFor.contentType === "text" && Date.now() - new Date(actionsFor.createdAt).getTime() < EDIT_WINDOW_MS ? (
               <SheetItem icon="pencil-outline" label="Edit" onPress={() => act("edit", actionsFor)} />
             ) : null}
-            {actionsFor.attachment ? <SheetItem icon="open-outline" label="Open file" onPress={() => void Linking.openURL(actionsFor.attachment!.url)} /> : null}
+            {actionsFor.attachment && kindOfMime(actionsFor.attachment.mime) !== "audio" ? (
+              <SheetItem
+                icon="open-outline"
+                label={kindOfMime(actionsFor.attachment.mime) === "file" ? "Open file" : "View"}
+                onPress={() => {
+                  const m = actionsFor;
+                  setActionsFor(null);
+                  if (kindOfMime(m.attachment!.mime) === "file") void Linking.openURL(m.attachment!.url);
+                  else setViewing(m.id);
+                }}
+              />
+            ) : null}
             <SheetItem icon="eye-off-outline" label="Delete for me" onPress={() => act("deleteMe", actionsFor)} />
             {actionsFor.senderId === meId || myRole === "admin" ? <SheetItem icon="trash-outline" label="Delete for everyone" destructive onPress={() => act("deleteAll", actionsFor)} /> : null}
           </>
@@ -405,6 +432,7 @@ function Bubble({
   meId,
   onLongPress,
   onPressReaction,
+  onOpenMedia,
 }: {
   message: LocalMessage;
   mine: boolean;
@@ -414,6 +442,7 @@ function Bubble({
   meId: string;
   onLongPress: () => void;
   onPressReaction: (emoji: string) => void;
+  onOpenMedia: () => void;
 }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
@@ -438,7 +467,11 @@ function Bubble({
 
   return (
     <View style={[s.bubbleWrap, mine ? s.bubbleWrapMine : s.bubbleWrapTheirs]}>
-      <Pressable onLongPress={onLongPress} delayLongPress={250} style={[s.bubble, mine ? s.bubbleMine : s.bubbleTheirs, message.attachment?.mime.startsWith("image/") && s.bubbleImage]}>
+      <Pressable
+        onLongPress={onLongPress}
+        delayLongPress={250}
+        style={[s.bubble, mine ? s.bubbleMine : s.bubbleTheirs, message.attachment && ["image", "video"].includes(kindOfMime(message.attachment.mime)) && s.bubbleImage]}
+      >
         {senderName ? <Text style={s.sender}>{senderName}</Text> : null}
         {message.replyTo ? (
           <View style={s.reply}>
@@ -454,7 +487,7 @@ function Bubble({
             <Text style={s.tombstoneText}>This message was deleted</Text>
           </View>
         ) : null}
-        {message.attachment ? <AttachmentView attachment={message.attachment} mine={mine} pending={!!message.pending} /> : null}
+        {message.attachment ? <AttachmentView attachment={message.attachment} mine={mine} pending={!!message.pending} onOpen={onOpenMedia} onLongPress={onLongPress} /> : null}
         {message.body && !message.deleted ? <Text style={s.body}>{message.body}</Text> : null}
         <View style={s.meta}>
           {message.editedAt ? <Text style={s.time}>edited</Text> : null}
@@ -478,15 +511,27 @@ function Bubble({
   );
 }
 
-function AttachmentView({ attachment, mine, pending }: { attachment: Attachment; mine: boolean; pending: boolean }) {
+function AttachmentView({ attachment, mine, pending, onOpen, onLongPress }: { attachment: Attachment; mine: boolean; pending: boolean; onOpen: () => void; onLongPress: () => void }) {
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
-  if (attachment.mime.startsWith("image/")) {
-    const ratio = attachment.width && attachment.height ? attachment.width / attachment.height : 4 / 3;
+  const kind = kindOfMime(attachment.mime);
+  if (kind === "image" || kind === "video") {
+    const ratio = attachment.width && attachment.height ? attachment.width / attachment.height : kind === "video" ? 16 / 9 : 4 / 3;
     const width = 240;
+    const height = Math.max(120, Math.min(320, width / ratio));
     return (
-      <Pressable onPress={() => void Linking.openURL(attachment.url)} style={s.imageWrap}>
-        <Image source={{ uri: attachment.url }} style={{ width, height: Math.min(320, width / ratio), borderRadius: radius.md }} contentFit="cover" transition={150} />
+      <Pressable onPress={onOpen} onLongPress={onLongPress} delayLongPress={250} style={s.imageWrap} accessibilityLabel={kind === "video" ? "Open video" : "Open photo"}>
+        {kind === "image" ? (
+          <Image source={{ uri: attachment.url }} style={{ width, height, borderRadius: radius.md }} contentFit="cover" transition={150} />
+        ) : (
+          <View style={[s.videoBox, { width, height }]}>
+            <Ionicons name="videocam" size={28} color="rgba(255,255,255,0.7)" />
+            <View style={s.playBadge}>
+              <Ionicons name="play" size={26} color="#fff" style={{ marginLeft: 3 }} />
+            </View>
+            {attachment.durationMs ? <Text style={s.videoDuration}>{formatDuration(attachment.durationMs)}</Text> : null}
+          </View>
+        )}
         {pending ? (
           <View style={s.uploading}>
             <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
@@ -579,6 +624,9 @@ const makeStyles = ({ colors }: Theme) =>
     reactionChipMine: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
     reactionText: { fontFamily: fonts.semibold, fontSize: 12, color: colors.text },
     imageWrap: { position: "relative" },
+    videoBox: { borderRadius: radius.md, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    playBadge: { position: "absolute", width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: "rgba(255,255,255,0.7)" },
+    videoDuration: { position: "absolute", right: 8, bottom: 6, fontFamily: fonts.semibold, fontSize: 11, color: "#fff", backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: "hidden" },
     uploading: { position: "absolute", bottom: 8, left: 8, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(0,0,0,0.55)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
     uploadingText: { fontFamily: fonts.medium, color: "#fff", fontSize: 12 },
     file: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minWidth: 180, maxWidth: 260, paddingVertical: 2 },

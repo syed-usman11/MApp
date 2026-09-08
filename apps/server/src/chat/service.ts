@@ -37,6 +37,8 @@ export function previewOf(message: Pick<Message, "body" | "contentType" | "delet
   switch (message.contentType) {
     case "image":
       return message.body ? `📷 ${message.body}` : "📷 Photo";
+    case "video":
+      return message.body ? `🎥 ${message.body}` : "🎥 Video";
     case "audio":
       return "🎤 Voice message";
     case "file":

@@ -118,6 +118,7 @@ export default function RootLayout() {
           <Stack.Screen name="new-group" options={{ title: "New group", presentation: "modal", animation: "slide_from_bottom" }} />
           <Stack.Screen name="group/[id]" options={{ title: "Group info" }} />
           <Stack.Screen name="search" options={{ title: "Search" }} />
+          <Stack.Screen name="user/[username]" options={{ title: "Profile" }} />
           <Stack.Screen name="profile" options={{ title: "Your profile" }} />
         </Stack.Protected>
       </Stack>

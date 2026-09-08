@@ -171,7 +171,7 @@ export default function GroupInfo() {
         <SectionLabel>Members</SectionLabel>
         <Card style={{ marginTop: spacing.sm }}>
           {conversation.members.map((m) => (
-            <View key={m.id} style={s.row}>
+            <PressableScale key={m.id} onPress={() => (m.username ? router.push(`/user/${m.username}`) : undefined)} scaleTo={0.98} style={s.row}>
               <Avatar name={m.displayName} size={44} online={presence[m.id]} uri={m.avatarUrl} />
               <View style={s.flex}>
                 <View style={s.memberNameRow}>
@@ -184,7 +184,7 @@ export default function GroupInfo() {
                 <Muted>{m.username ? `@${m.username}` : "No username"}</Muted>
               </View>
               {isAdmin && m.id !== meId ? <IconButton icon="person-remove-outline" size={20} color={colors.danger} onPress={() => remove(m)} label={`Remove ${m.displayName}`} /> : null}
-            </View>
+            </PressableScale>
           ))}
         </Card>
       </Reveal>

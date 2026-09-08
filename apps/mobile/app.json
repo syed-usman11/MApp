@@ -89,6 +89,14 @@
           "cameraPermission": "MApp uses the camera for video calls.",
           "microphonePermission": "MApp uses the microphone for voice calls."
         }
+      ],
+      "expo-video",
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "MApp saves photos and videos you choose to your library.",
+          "isAccessMediaLocationEnabled": false
+        }
       ]
     ]
   }

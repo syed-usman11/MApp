@@ -18,8 +18,9 @@ export interface MediaServiceOptions {
 const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif"]);
 const AUDIO_MIMES = new Set(["audio/m4a", "audio/mp4", "audio/aac", "audio/mpeg", "audio/webm", "audio/ogg", "audio/wav", "audio/x-m4a", "audio/3gpp"]);
 
-export function kindOf(mime: string): "image" | "audio" | "file" {
+export function kindOf(mime: string): "image" | "video" | "audio" | "file" {
   if (IMAGE_MIMES.has(mime)) return "image";
+  if (mime.startsWith("video/")) return "video";
   if (AUDIO_MIMES.has(mime)) return "audio";
   return "file";
 }

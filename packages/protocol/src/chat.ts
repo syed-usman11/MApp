@@ -8,7 +8,7 @@ export const ReceiptSummary = z.object({
 });
 export type ReceiptSummary = z.infer<typeof ReceiptSummary>;
 
-export const ContentType = z.enum(["text", "image", "file", "audio", "system"]);
+export const ContentType = z.enum(["text", "image", "video", "file", "audio", "system"]);
 export type ContentType = z.infer<typeof ContentType>;
 
 /** A photo, file or voice note attached to a message. `url` is a signed link the client can load without headers. */

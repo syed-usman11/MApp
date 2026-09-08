@@ -1,7 +1,8 @@
 import * as DocumentPicker from "expo-document-picker";
+import { Directory, File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { Platform } from "react-native";
-import type { MediaUploadResponse } from "@mapp/protocol";
+import type { Attachment, MediaUploadResponse } from "@mapp/protocol";
 import { ApiError, ensureFreshAccessToken, fetchWithTimeout } from "./api";
 import { API_URL } from "./config";
 
@@ -17,13 +18,18 @@ export interface LocalFile {
 
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-/** Opens the photo library. Resolves null when the user cancels. */
-export async function pickImage(): Promise<LocalFile | null> {
+/** Opens the photo library for a photo or a video. Resolves null when the user cancels. */
+export async function pickMedia(kinds: Array<"images" | "videos"> = ["images", "videos"]): Promise<LocalFile | null> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!perm.granted) throw new Error("Photo access was not allowed");
-  const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.85, exif: false });
+  const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: kinds, quality: 0.85, exif: false, videoMaxDuration: 180 });
   if (res.canceled || !res.assets[0]) return null;
   return fromImageAsset(res.assets[0]);
+}
+
+/** Photos only; used for group avatars. */
+export function pickImage(): Promise<LocalFile | null> {
+  return pickMedia(["images"]);
 }
 
 /** Opens the camera. Not available on web. */
@@ -37,15 +43,58 @@ export async function takePhoto(): Promise<LocalFile | null> {
 }
 
 function fromImageAsset(a: ImagePicker.ImagePickerAsset): LocalFile {
-  const ext = a.mimeType?.split("/")[1] ?? "jpg";
+  const isVideo = a.type === "video" || (a.mimeType ?? "").startsWith("video/");
+  const mime = a.mimeType ?? (isVideo ? "video/mp4" : "image/jpeg");
+  const ext = mime.split("/")[1] ?? (isVideo ? "mp4" : "jpg");
   return {
     uri: a.uri,
-    mime: a.mimeType ?? "image/jpeg",
-    name: a.fileName ?? `photo-${Date.now()}.${ext}`,
+    mime,
+    name: a.fileName ?? `${isVideo ? "video" : "photo"}-${Date.now()}.${ext}`,
     size: a.fileSize ?? undefined,
     width: a.width,
     height: a.height,
+    ...(isVideo && a.duration ? { durationMs: Math.round(a.duration) } : {}),
   };
+}
+
+export type MediaKind = "image" | "video" | "audio" | "file";
+
+export function kindOfMime(mime: string): MediaKind {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "file";
+}
+
+/**
+ * Saves a photo or video to the device gallery (asks for the storage
+ * permission first), or triggers a browser download on the web.
+ */
+export async function saveToDevice(attachment: Attachment): Promise<void> {
+  if (Platform.OS === "web") {
+    const blob = await (await fetch(attachment.url)).blob();
+    const doc = globalThis.document;
+    const objectUrl = URL.createObjectURL(blob);
+    const a = doc.createElement("a");
+    a.href = objectUrl;
+    a.download = attachment.name;
+    doc.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+    return;
+  }
+  // Loaded lazily: the module has no web implementation and throws at import time there.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const MediaLibrary = require("expo-media-library") as typeof import("expo-media-library");
+  const perm = await MediaLibrary.requestPermissionsAsync(true);
+  if (!perm.granted) throw new Error("Storage permission was not allowed. Enable it in Settings to save media.");
+  const dir = new Directory(Paths.cache, "downloads");
+  dir.create({ intermediates: true, idempotent: true });
+  const safeName = attachment.name.replace(/[^\w.\-]+/g, "_") || `media-${Date.now()}`;
+  const target = new File(dir, `${Date.now()}-${safeName}`);
+  const file = await File.downloadFileAsync(attachment.url, target);
+  await MediaLibrary.saveToLibraryAsync(file.uri);
 }
 
 /** Opens the system file picker. Resolves null when the user cancels. */
