@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm ci --include=dev",
+  "installCommand": "npm ci --include=dev --workspaces --include-workspace-root",
   "buildCommand": "npm run build -w @mapp/protocol && npx expo export apps/mobile --platform web",
   "outputDirectory": "apps/mobile/dist",
   "rewrites": [
