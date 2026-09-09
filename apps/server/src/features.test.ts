@@ -345,6 +345,16 @@ describe("groups, media, message actions, search, push and calls", () => {
     a.send({ type: "call.ice", callId: incoming.callId, candidate: { candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 } });
     expect((await b.nextOfType("call.ice")).candidate.candidate).toBe("candidate:1");
 
+    // Renegotiation after an ICE restart is relayed untouched, both directions.
+    a.send({ type: "call.sdp", callId: incoming.callId, sdp: { type: "offer", sdp: "v=0 restart" } });
+    expect((await b.nextOfType("call.sdp")).sdp).toEqual({ type: "offer", sdp: "v=0 restart" });
+    b.send({ type: "call.sdp", callId: incoming.callId, sdp: { type: "answer", sdp: "v=0 restart-answer" } });
+    expect((await a.nextOfType("call.sdp")).sdp.type).toBe("answer");
+
+    const ice = await app.inject({ method: "GET", url: "/v1/calls/ice", headers: bearer(alice.tokens.accessToken) });
+    expect(ice.statusCode).toBe(200);
+    expect(ice.json().iceServers[0].urls[0]).toMatch(/^stun:/);
+
     a.send({ type: "call.hold", callId: incoming.callId, onHold: true });
     expect(await b.nextOfType("call.hold")).toMatchObject({ callId: incoming.callId, userId: alice.user.id, onHold: true });
 

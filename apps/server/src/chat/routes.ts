@@ -17,8 +17,16 @@ import type { PushService } from "../push/service.js";
 import type { Hub } from "../ws/hub.js";
 import type { ChatService } from "./service.js";
 
-export function chatRoutes(app: FastifyInstance, deps: { chat: ChatService; tokens: TokenService; hub: Hub; push: PushService; calls: CallService }) {
-  const { chat, tokens, hub, push, calls } = deps;
+export interface TurnConfig {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
+const STUN_SERVERS = ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.cloudflare.com:3478"];
+
+export function chatRoutes(app: FastifyInstance, deps: { chat: ChatService; tokens: TokenService; hub: Hub; push: PushService; calls: CallService; turn?: TurnConfig | null }) {
+  const { chat, tokens, hub, push, calls, turn } = deps;
   const auth = { preHandler: requireAuth(tokens) };
 
   app.get("/v1/conversations", auth, async (req) => {
@@ -120,6 +128,13 @@ export function chatRoutes(app: FastifyInstance, deps: { chat: ChatService; toke
     const body = RegisterPushTokenRequest.parse(req.body);
     await push.registerToken(userId, deviceId, body.token);
     return { ok: true };
+  });
+
+  /** ICE servers for the next call. TURN credentials stay on the server so they can be rotated without an app update. */
+  app.get("/v1/calls/ice", auth, async () => {
+    const iceServers: Array<{ urls: string[]; username?: string; credential?: string }> = [{ urls: STUN_SERVERS }];
+    if (turn && turn.urls.length > 0) iceServers.push({ urls: turn.urls, ...(turn.username ? { username: turn.username } : {}), ...(turn.credential ? { credential: turn.credential } : {}) });
+    return { iceServers };
   });
 
   app.get("/v1/calls", auth, async (req) => {

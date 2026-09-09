@@ -88,6 +88,7 @@ class Realtime {
         useChat.getState().setConnected(true);
         this.startPing();
         this.flushOutbox();
+        useCall.getState().onSocketReady();
         return;
       }
       if (event.type === "error" && event.code === "UNAUTHENTICATED") {

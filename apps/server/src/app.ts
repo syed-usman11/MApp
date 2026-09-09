@@ -111,7 +111,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   userRoutes(app, db, tokens);
   contactRoutes(app, db, tokens);
   mediaRoutes(app, media, tokens, config.mediaMaxBytes);
-  chatRoutes(app, { chat, tokens, hub, push, calls });
+  chatRoutes(app, { chat, tokens, hub, push, calls, turn: config.turn });
   registerGateway(app, { hub, chat, tokens, push, calls });
 
   app.addHook("onClose", async () => calls.clear());

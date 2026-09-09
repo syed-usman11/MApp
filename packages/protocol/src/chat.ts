@@ -166,6 +166,12 @@ export const CallRecord = z.object({
 });
 export type CallRecord = z.infer<typeof CallRecord>;
 
+/** ICE configuration handed to clients before a call: STUN always, TURN when the server has credentials. */
+export const IceServersResponse = z.object({
+  iceServers: z.array(z.object({ urls: z.array(z.string()), username: z.string().optional(), credential: z.string().optional() })),
+});
+export type IceServersResponse = z.infer<typeof IceServersResponse>;
+
 export const ListCallsResponse = z.object({
   calls: z.array(CallRecord),
 });

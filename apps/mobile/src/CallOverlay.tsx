@@ -1,15 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import { useEffect, useState } from "react";
-import { Modal, Platform, StyleSheet, Text, Vibration, View } from "react-native";
+import { Modal, Platform, Pressable, StyleSheet, Text, Vibration, View } from "react-native";
 import Animated, { FadeIn, ZoomIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { describeEnd, useCall } from "./callStore";
 import { formatDuration } from "./media";
-import { fonts, spacing } from "./theme";
+import { fonts, radius, spacing } from "./theme";
 import { Avatar, PressableScale, type IconName } from "./ui";
 import { useStyles, useTheme, type Theme } from "./useTheme";
-import { getAudioRoute } from "./webrtc";
+import type { AudioRouteName } from "./webrtc";
+
+const ROUTE_META: Record<AudioRouteName, { label: string; icon: IconName }> = {
+  earpiece: { label: "Phone", icon: "phone-portrait-outline" },
+  speaker: { label: "Speaker", icon: "volume-high-outline" },
+  bluetooth: { label: "Bluetooth", icon: "bluetooth-outline" },
+  wired: { label: "Headphones", icon: "headset-outline" },
+};
 
 /**
  * Full-screen voice call UI, mounted once in the root layout so an incoming
@@ -22,9 +29,12 @@ export function CallOverlay() {
   const phase = useCall((c) => c.phase);
   const peer = useCall((c) => c.peer);
   const muted = useCall((c) => c.muted);
-  const speakerOn = useCall((c) => c.speakerOn);
   const onHold = useCall((c) => c.onHold);
   const peerOnHold = useCall((c) => c.peerOnHold);
+  const audioRoute = useCall((c) => c.audioRoute);
+  const availableRoutes = useCall((c) => c.availableRoutes);
+  const quality = useCall((c) => c.quality);
+  const reconnecting = useCall((c) => c.reconnecting);
   const connectedAt = useCall((c) => c.connectedAt);
   const endReason = useCall((c) => c.endReason);
   const error = useCall((c) => c.error);
@@ -32,13 +42,13 @@ export function CallOverlay() {
   const decline = useCall((c) => c.decline);
   const hangup = useCall((c) => c.hangup);
   const toggleMute = useCall((c) => c.toggleMute);
-  const toggleSpeaker = useCall((c) => c.toggleSpeaker);
   const toggleHold = useCall((c) => c.toggleHold);
+  const chooseRoute = useCall((c) => c.chooseRoute);
   const dismiss = useCall((c) => c.dismiss);
   const [now, setNow] = useState(Date.now());
+  const [routePicker, setRoutePicker] = useState(false);
   const ringback = useAudioPlayer(require("../assets/sounds/ringback.wav"));
   const ringtone = useAudioPlayer(require("../assets/sounds/ringtone.wav"));
-  const speakerAvailable = getAudioRoute().available;
 
   // Ringback while we wait for the other side; ringtone and vibration while they wait for us.
   useEffect(() => {
@@ -81,9 +91,15 @@ export function CallOverlay() {
 
   useEffect(() => {
     if (phase !== "ended") return;
+    setRoutePicker(false);
     const t = setTimeout(dismiss, 1800);
     return () => clearTimeout(t);
   }, [phase, dismiss]);
+
+  // A Bluetooth headset connecting mid-call is picked up automatically by the OS; make the picker reflect it.
+  useEffect(() => {
+    if (!availableRoutes.includes(audioRoute) && availableRoutes.length > 0) setRoutePicker(false);
+  }, [availableRoutes, audioRoute]);
 
   const visible = phase !== "idle" || !!error;
   if (!visible) return null;
@@ -98,14 +114,20 @@ export function CallOverlay() {
         : phase === "connecting"
           ? "Connecting…"
           : phase === "active"
-            ? onHold
-              ? "On hold"
-              : peerOnHold
-                ? `${peer?.displayName?.split(" ")[0] ?? "They"} put you on hold`
-                : connectedAt
-                  ? formatDuration(now - connectedAt)
-                  : "Connected"
+            ? reconnecting
+              ? "Reconnecting…"
+              : onHold
+                ? "On hold"
+                : peerOnHold
+                  ? `${peer?.displayName?.split(" ")[0] ?? "They"} put you on hold`
+                  : connectedAt
+                    ? formatDuration(now - connectedAt)
+                    : "Connected"
             : describeEnd(endReason));
+
+  const qualityLabel = phase === "active" && !reconnecting && quality && quality !== "good" ? (quality === "poor" ? "Poor connection" : "Weak connection") : null;
+  const routeMeta = ROUTE_META[audioRoute];
+  const routeOptions = (["earpiece", "speaker", "bluetooth", "wired"] as AudioRouteName[]).filter((r) => availableRoutes.includes(r));
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={() => (phase === "incoming" ? decline() : phase === "ended" || error ? dismiss() : hangup())}>
@@ -116,13 +138,19 @@ export function CallOverlay() {
             <Avatar name={peer?.displayName ?? "?"} size={112} uri={peer?.avatarUrl} />
           </Animated.View>
           <Text style={s.name}>{peer?.displayName ?? "Unknown"}</Text>
-          <Text style={[s.status, (phase === "ended" || error) && { color: colors.danger }, (onHold || peerOnHold) && phase === "active" && { color: colors.primary }]}>{status}</Text>
+          <Text style={[s.status, (phase === "ended" || error) && { color: colors.danger }, ((onHold || peerOnHold) && phase === "active") || reconnecting ? { color: colors.primary } : null]}>{status}</Text>
+          {qualityLabel ? (
+            <View style={[s.qualityPill, quality === "poor" ? { backgroundColor: colors.dangerSoft } : { backgroundColor: colors.primarySoft }]}>
+              <Ionicons name="cellular-outline" size={14} color={quality === "poor" ? colors.danger : colors.primary} />
+              <Text style={[s.qualityText, { color: quality === "poor" ? colors.danger : colors.primary }]}>{qualityLabel}</Text>
+            </View>
+          ) : null}
         </Animated.View>
 
         {inCall ? (
           <View style={s.grid}>
             <RoundButton icon={muted ? "mic-off" : "mic"} label={muted ? "Unmute" : "Mute"} active={muted} onPress={toggleMute} small />
-            <RoundButton icon={speakerOn ? "volume-high" : "volume-medium-outline"} label="Speaker" active={speakerOn} onPress={toggleSpeaker} small disabled={!speakerAvailable} />
+            <RoundButton icon={routeMeta.icon} label={routeMeta.label} active={audioRoute !== "earpiece"} onPress={() => setRoutePicker(true)} small />
             <RoundButton icon={onHold ? "play" : "pause"} label={onHold ? "Resume" : "Hold"} active={onHold} onPress={toggleHold} small />
           </View>
         ) : null}
@@ -139,6 +167,36 @@ export function CallOverlay() {
             <RoundButton icon="call" label="End" color={colors.danger} onPress={hangup} rotate />
           )}
         </View>
+
+        {routePicker ? (
+          <Pressable style={s.pickerBackdrop} onPress={() => setRoutePicker(false)}>
+            <Pressable style={s.picker} onPress={() => undefined}>
+              <Text style={s.pickerTitle}>Play audio through</Text>
+              {routeOptions.map((r) => {
+                const meta = ROUTE_META[r];
+                const active = r === audioRoute;
+                return (
+                  <PressableScale
+                    key={r}
+                    onPress={() => {
+                      setRoutePicker(false);
+                      void chooseRoute(r);
+                    }}
+                    scaleTo={0.97}
+                    style={[s.pickerRow, active && s.pickerRowActive]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Ionicons name={meta.icon} size={22} color={active ? colors.primary : colors.text} />
+                    <Text style={[s.pickerLabel, active && { color: colors.primary }]}>{meta.label}</Text>
+                    {active ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                  </PressableScale>
+                );
+              })}
+              {!availableRoutes.includes("bluetooth") ? <Text style={s.pickerHint}>Connect a Bluetooth headset and it appears here automatically.</Text> : null}
+            </Pressable>
+          </Pressable>
+        ) : null}
       </View>
     </Modal>
   );
@@ -184,6 +242,8 @@ const makeStyles = ({ colors }: Theme) =>
     kicker: { fontFamily: fonts.semibold, fontSize: 13, color: colors.muted, textTransform: "uppercase", letterSpacing: 1 },
     name: { fontFamily: fonts.extrabold, fontSize: 30, color: colors.text, letterSpacing: -0.5 },
     status: { fontFamily: fonts.medium, fontSize: 16, color: colors.muted },
+    qualityPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill },
+    qualityText: { fontFamily: fonts.semibold, fontSize: 12 },
     grid: { flexDirection: "row", gap: spacing.xl, alignItems: "flex-start" },
     controls: { flexDirection: "row", gap: spacing.xxl, alignItems: "flex-start" },
     control: { alignItems: "center", gap: spacing.sm },
@@ -191,4 +251,11 @@ const makeStyles = ({ colors }: Theme) =>
     roundSmall: { width: 60, height: 60, borderRadius: 30, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
     disabled: { opacity: 0.35 },
     controlLabel: { fontFamily: fonts.semibold, fontSize: 13, color: colors.muted },
+    pickerBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" },
+    picker: { backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: spacing.xxl, gap: 4 },
+    pickerTitle: { fontFamily: fonts.bold, fontSize: 14, color: colors.muted, marginBottom: spacing.sm },
+    pickerRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderRadius: radius.md },
+    pickerRowActive: { backgroundColor: colors.primarySoft },
+    pickerLabel: { flex: 1, fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
+    pickerHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.muted, marginTop: spacing.sm },
   });

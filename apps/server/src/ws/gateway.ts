@@ -180,6 +180,12 @@ export function registerGateway(app: FastifyInstance, deps: GatewayDeps) {
             hub.send(call.callerId === me ? call.calleeId : call.callerId, { type: "call.ice", callId: call.id, candidate: event.candidate });
             return;
           }
+          case "call.sdp": {
+            const call = calls.get(event.callId);
+            if (!call || (call.callerId !== me && call.calleeId !== me)) return;
+            hub.send(call.callerId === me ? call.calleeId : call.callerId, { type: "call.sdp", callId: call.id, sdp: event.sdp });
+            return;
+          }
           case "call.hold": {
             const call = calls.get(event.callId);
             if (!call || (call.callerId !== me && call.calleeId !== me)) return;

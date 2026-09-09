@@ -43,6 +43,10 @@ const EnvSchema = z.object({
   SMTP_SECURE: z.string().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  /** TURN relay for voice calls between phones behind carrier NAT. Comma-separated turn:/turns: URLs. */
+  TURN_URLS: z.string().optional(),
+  TURN_USERNAME: z.string().optional(),
+  TURN_CREDENTIAL: z.string().optional(),
   /** Firebase service-account JSON (raw or base64) for sending Android push directly through FCM. */
   FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
   /** Set to "false" to skip the Expo push service entirely (tests, local dev). */
@@ -91,6 +95,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       smtpPass: e.SMTP_PASS,
     },
     firebaseServiceAccount: e.FIREBASE_SERVICE_ACCOUNT,
+    turn: e.TURN_URLS ? { urls: csv(e.TURN_URLS), username: e.TURN_USERNAME, credential: e.TURN_CREDENTIAL } : null,
     mediaMaxBytes: Math.round(e.MEDIA_MAX_MB * 1024 * 1024),
     mediaLinkTtlSeconds: e.MEDIA_LINK_TTL_SECONDS,
     pushEnabled: e.PUSH_ENABLED !== undefined ? e.PUSH_ENABLED === "true" : e.NODE_ENV !== "test",

@@ -42,6 +42,13 @@ services:
         value: "false"
       - key: REGISTRATION_MIN_ASSURANCE
         value: low
+      # Voice calls: TURN relay, see .env.example.
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_USERNAME
+        sync: false
+      - key: TURN_CREDENTIAL
+        sync: false
       # Android push: the Firebase service-account JSON, see .env.example.
       - key: FIREBASE_SERVICE_ACCOUNT
         sync: false
