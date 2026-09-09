@@ -4,6 +4,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeInUp, FadeOut } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Attachment, Conversation, Member, ReplyPreview } from "@mapp/protocol";
 import { errorMessage } from "../../src/api";
 import { useCall } from "../../src/callStore";
@@ -41,6 +42,9 @@ export default function Thread() {
   const clearUnread = useChat((st) => st.clearUnread);
   const markRead = useChat((st) => st.markRead);
   const startCall = useCall((c) => c.startCall);
+  const insets = useSafeAreaInsets();
+  // Native-stack header: status bar inset plus the platform toolbar height.
+  const headerHeight = insets.top + (Platform.OS === "ios" ? 44 : 56);
 
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -134,11 +138,12 @@ export default function Thread() {
       : "typing"
     : isGroup
       ? `${conversation?.members.length ?? 0} members`
-      : peer && presence[peer.id]
+      : peer && (presence[peer.id] ?? peer.online)
         ? "online"
         : peer
           ? "offline"
           : "";
+  const peerOnline = peer ? (presence[peer.id] ?? peer.online) : false;
 
   const data = useMemo(() => [...(messages ?? [])].reverse(), [messages]);
 
@@ -266,19 +271,14 @@ export default function Thread() {
         }
       : null;
 
-  if (!loaded) return <Loading />;
-
-  const canSend = text.trim().length > 0 && connected;
-  const showMic = text.trim().length === 0 && !editing;
-
-  return (
-    <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={88}>
-      <Stack.Screen
+  const header = (
+    <Stack.Screen
         options={{
-          title: label?.name ?? "Chat",
-          headerTitle: () => (
+          title: label?.name ?? "",
+          headerTitle: () =>
+            label ? (
             <Pressable onPress={() => (isGroup ? router.push(`/group/${conversationId}`) : undefined)} style={s.headerRow}>
-              <Avatar name={label?.name ?? "?"} size={34} online={peer ? presence[peer.id] : false} uri={label?.avatarUrl} />
+              <Avatar name={label?.name ?? "?"} size={34} online={peerOnline} uri={label?.avatarUrl} />
               <View style={s.flexShrink}>
                 <View style={s.headerNameRow}>
                   <Text style={s.headerTitle} numberOfLines={1}>
@@ -296,8 +296,11 @@ export default function Thread() {
                 ) : null}
               </View>
             </Pressable>
-          ),
-          headerRight: () => (
+            ) : (
+              <View style={s.headerRow} />
+            ),
+          headerRight: () =>
+            label ? (
             <View style={s.headerActions}>
               {isGroup ? (
                 <IconButton icon="people-outline" size={24} onPress={() => router.push(`/group/${conversationId}`)} label="Group info" />
@@ -305,14 +308,32 @@ export default function Thread() {
                 <IconButton icon="call-outline" size={22} onPress={call} label="Voice call" />
               )}
             </View>
-          ),
+            ) : null,
         }}
       />
+  );
+
+  if (!loaded) {
+    return (
+      <>
+        {header}
+        <Loading />
+      </>
+    );
+  }
+
+  const canSend = text.trim().length > 0 && connected;
+  const showMic = text.trim().length === 0 && !editing;
+
+  return (
+    <KeyboardAvoidingView style={s.screen} behavior="padding" keyboardVerticalOffset={headerHeight}>
+      {header}
       {notice ? (
         <Animated.View entering={FadeIn} exiting={FadeOut} style={s.notice}>
           <InfoText icon="time-outline">{notice}</InfoText>
         </Animated.View>
       ) : null}
+      <View style={s.flex}>
       <FlatList
         inverted
         data={data}
@@ -346,13 +367,14 @@ export default function Thread() {
           );
         }}
         contentContainerStyle={s.list}
-        ListEmptyComponent={
-          <View style={s.empty}>
-            <Ionicons name="lock-closed-outline" size={20} color={colors.muted} />
-            <Muted>No messages yet. Say hello.</Muted>
-          </View>
-        }
       />
+      {data.length === 0 ? (
+        <View style={s.empty} pointerEvents="none">
+          <Ionicons name="lock-closed-outline" size={20} color={colors.muted} />
+          <Muted>No messages yet. Say hello.</Muted>
+        </View>
+      ) : null}
+      </View>
       <ErrorText>{error}</ErrorText>
 
       {replyTo || editing ? (
@@ -624,7 +646,7 @@ const makeStyles = ({ colors }: Theme) =>
     headerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs, marginRight: spacing.sm },
     notice: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
     list: { padding: spacing.md, gap: 6 },
-    empty: { alignItems: "center", gap: spacing.xs, transform: [{ scaleY: -1 }], paddingVertical: spacing.xl },
+    empty: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", gap: spacing.xs },
     systemRow: { alignItems: "center", marginVertical: 4 },
     systemText: { fontFamily: fonts.medium, fontSize: 12, color: colors.muted, backgroundColor: colors.cardAlt, paddingHorizontal: spacing.md, paddingVertical: 4, borderRadius: radius.pill, overflow: "hidden" },
     bubbleWrap: { maxWidth: "82%" },

@@ -45,6 +45,8 @@ export interface ChatState {
   hiddenLocally: Record<string, true>;
 
   setConnected(connected: boolean): void;
+  /** Forget who was online; the server re-announces online peers after every reconnect. */
+  resetPresence(): void;
   loadConversations(): Promise<void>;
   openDirect(username: string): Promise<Conversation>;
   createGroup(name: string, memberIds: string[]): Promise<Conversation>;
@@ -62,6 +64,13 @@ export interface ChatState {
   markRead(conversationId: string): Promise<void>;
   handleEvent(event: ServerEvent): void;
   reset(): void;
+}
+
+/** Members carry their live status when the conversation was served; fold it into the presence map. */
+function presenceFrom(presence: Record<string, boolean>, conversations: Conversation[]): Record<string, boolean> {
+  const next = { ...presence };
+  for (const c of conversations) for (const m of c.members) next[m.id] = m.online;
+  return next;
 }
 
 function upsertMessage(list: LocalMessage[], message: LocalMessage): LocalMessage[] {
@@ -91,22 +100,26 @@ export const useChat = create<ChatState>((set, get) => ({
     set({ connected });
   },
 
+  resetPresence() {
+    set({ presence: {} });
+  },
+
   async loadConversations() {
     const res = await api<ListConversationsResponse>("/v1/conversations");
     const conversations: Record<string, Conversation> = {};
     for (const c of res.conversations) conversations[c.id] = c;
-    set({ conversations });
+    set((s) => ({ conversations, presence: presenceFrom(s.presence, res.conversations) }));
   },
 
   async openDirect(username) {
     const conv = await api<Conversation>("/v1/conversations/direct", { body: { username } });
-    set((s) => ({ conversations: { ...s.conversations, [conv.id]: conv } }));
+    set((s) => ({ conversations: { ...s.conversations, [conv.id]: conv }, presence: presenceFrom(s.presence, [conv]) }));
     return conv;
   },
 
   async createGroup(name, memberIds) {
     const conv = await api<Conversation>("/v1/conversations/group", { body: { name, memberIds } });
-    set((s) => ({ conversations: { ...s.conversations, [conv.id]: conv } }));
+    set((s) => ({ conversations: { ...s.conversations, [conv.id]: conv }, presence: presenceFrom(s.presence, [conv]) }));
     return conv;
   },
 
@@ -275,7 +288,7 @@ export const useChat = create<ChatState>((set, get) => ({
           delete messages[conversation.id];
           set({ conversations, messages });
         } else {
-          set({ conversations: { ...s.conversations, [conversation.id]: conversation } });
+          set({ conversations: { ...s.conversations, [conversation.id]: conversation }, presence: presenceFrom(s.presence, [conversation]) });
         }
         return;
       }

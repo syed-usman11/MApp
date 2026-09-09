@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { CallOverlay } from "../src/CallOverlay";
+import { HeaderBack } from "../src/HeaderBack";
 import { unreadTotal, useChat } from "../src/chatStore";
 import { installNotificationHandler, onNotificationTap, registerForPush, setAppBadge, unregisterPush } from "../src/push";
 import { realtime } from "../src/realtime";
@@ -96,6 +97,7 @@ export default function RootLayout() {
           headerBackTitleStyle: { fontFamily: fonts.medium },
           headerShadowVisible: false,
           headerTitleAlign: "left",
+          headerLeft: () => <HeaderBack />,
           contentStyle: { backgroundColor: colors.bg },
           animation: Platform.OS === "android" ? "slide_from_right" : "default",
           animationDuration: 260,
@@ -114,7 +116,7 @@ export default function RootLayout() {
 
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false, animation: "fade" }} />
-          <Stack.Screen name="chat/[id]" options={{ headerBackTitle: "Chats" }} />
+          <Stack.Screen name="chat/[id]" options={{ title: "", headerBackTitle: "Chats" }} />
           <Stack.Screen name="new-chat" options={{ title: "New chat", presentation: "modal", animation: "slide_from_bottom" }} />
           <Stack.Screen name="new-group" options={{ title: "New group", presentation: "modal", animation: "slide_from_bottom" }} />
           <Stack.Screen name="group/[id]" options={{ title: "Group info" }} />

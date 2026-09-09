@@ -68,7 +68,7 @@ export type Message = z.infer<typeof Message>;
 export const MemberRole = z.enum(["admin", "member"]);
 export type MemberRole = z.infer<typeof MemberRole>;
 
-export const Member = PublicUser.extend({ role: MemberRole.default("member") });
+export const Member = PublicUser.extend({ role: MemberRole.default("member"), /** Live at the moment the conversation was served. */ online: z.boolean().default(false) });
 export type Member = z.infer<typeof Member>;
 
 export const Conversation = z.object({

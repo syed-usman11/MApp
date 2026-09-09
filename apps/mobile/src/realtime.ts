@@ -84,6 +84,7 @@ class Realtime {
 
       if (event.type === "ready") {
         this.attempt = 0;
+        useChat.getState().resetPresence();
         useChat.getState().setConnected(true);
         this.startPing();
         this.flushOutbox();

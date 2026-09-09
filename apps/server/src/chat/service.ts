@@ -52,6 +52,8 @@ export class ChatService {
   constructor(
     private readonly db: Db,
     private readonly media: MediaService,
+    /** Presence lookup, wired to the socket hub. */
+    private readonly isOnline: (userId: string) => boolean = () => false,
   ) {}
 
   // ---------- conversations ----------
@@ -627,7 +629,7 @@ export class ChatService {
       name: conv.name,
       avatarUrl: conv.avatarMediaId ? this.media.signedUrl(conv.avatarMediaId) : null,
       createdAt: conv.createdAt.toISOString(),
-      members: memberRows.map((r) => ({ ...toPublicUser(r.user), role: r.role as MemberRole })),
+      members: memberRows.map((r) => ({ ...toPublicUser(r.user), role: r.role as MemberRole, online: this.isOnline(r.user.id) })),
       lastMessage: last ? (await this.hydrate([last]))[0]! : null,
       unreadCount: unread?.count ?? 0,
     };

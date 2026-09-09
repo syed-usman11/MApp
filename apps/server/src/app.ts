@@ -68,8 +68,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     maxBytes: config.mediaMaxBytes,
     linkTtlSeconds: config.mediaLinkTtlSeconds,
   });
-  const chat = new ChatService(db, media);
   const hub = new Hub();
+  const chat = new ChatService(db, media, (userId) => hub.isOnline(userId));
   let fcm: FcmClient | null = null;
   try {
     fcm = FcmClient.fromEnv(config.firebaseServiceAccount, deps.pushFetch);

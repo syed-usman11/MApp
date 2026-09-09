@@ -128,7 +128,7 @@ function ConversationRow({
   const unread = conversation.unreadCount > 0;
   return (
     <PressableScale onPress={onPress} scaleTo={0.98} style={s.row}>
-      <Avatar name={label.name} size={50} online={peer ? online[peer.id] : false} uri={label.avatarUrl} />
+      <Avatar name={label.name} size={50} online={peer ? (online[peer.id] ?? peer.online) : false} uri={label.avatarUrl} />
       <View style={s.flex}>
         <View style={s.rowTop}>
           <View style={[s.nameRow, s.flex]}>
