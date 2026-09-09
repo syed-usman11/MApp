@@ -65,6 +65,10 @@ const env = {
   CI: "1",
 };
 
+if (!existsSync(join(mobileDir, "google-services.json"))) {
+  console.warn("⚠ apps/mobile/google-services.json is missing: this build cannot receive push notifications while closed.\n  Download it from the Firebase console (project settings > your Android app) and rebuild.");
+}
+
 // ---- clean caches that would otherwise reuse a stale JS bundle ---------------
 for (const p of [join(tmpdir(), "metro-cache"), join(androidDir, "app", "build", "generated", "assets"), join(androidDir, "app", "build", "outputs", "apk")]) {
   rmSync(p, { recursive: true, force: true });

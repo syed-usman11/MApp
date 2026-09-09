@@ -42,6 +42,9 @@ services:
         value: "false"
       - key: REGISTRATION_MIN_ASSURANCE
         value: low
+      # Android push: the Firebase service-account JSON, see .env.example.
+      - key: FIREBASE_SERVICE_ACCOUNT
+        sync: false
       # Password reset emails. Fill these in the dashboard (Environment tab); see .env.example.
       - key: MAIL_FROM
         sync: false

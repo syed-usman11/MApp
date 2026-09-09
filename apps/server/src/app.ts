@@ -19,6 +19,7 @@ import { IdentityService } from "./identity/service.js";
 import type { Vault } from "./identity/vault.js";
 import { mediaRoutes } from "./media/routes.js";
 import { MediaService } from "./media/service.js";
+import { FcmClient } from "./push/fcm.js";
 import { PushService } from "./push/service.js";
 import { userRoutes } from "./users/routes.js";
 import { registerGateway } from "./ws/gateway.js";
@@ -69,7 +70,15 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
   const chat = new ChatService(db, media);
   const hub = new Hub();
-  const push = new PushService(db, app.log, deps.pushFetch, config.pushEnabled);
+  let fcm: FcmClient | null = null;
+  try {
+    fcm = FcmClient.fromEnv(config.firebaseServiceAccount, deps.pushFetch);
+  } catch (err) {
+    app.log.error({ err }, "FIREBASE_SERVICE_ACCOUNT is not valid JSON for a service account; Android push disabled");
+  }
+  if (fcm) app.log.info({ project: fcm.projectId }, "android push via FCM");
+  else if (config.nodeEnv === "production") app.log.warn("FIREBASE_SERVICE_ACCOUNT not set; Android devices will not receive notifications while the app is closed");
+  const push = new PushService(db, app.log, deps.pushFetch, config.pushEnabled, fcm);
   const calls = new CallService(db);
 
   app.setErrorHandler((err, req, reply) => {

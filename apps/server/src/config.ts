@@ -43,6 +43,8 @@ const EnvSchema = z.object({
   SMTP_SECURE: z.string().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  /** Firebase service-account JSON (raw or base64) for sending Android push directly through FCM. */
+  FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
   /** Set to "false" to skip the Expo push service entirely (tests, local dev). */
   PUSH_ENABLED: z.string().optional(),
   DIGILOCKER_CLIENT_ID: z.string().optional(),
@@ -88,6 +90,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       smtpUser: e.SMTP_USER,
       smtpPass: e.SMTP_PASS,
     },
+    firebaseServiceAccount: e.FIREBASE_SERVICE_ACCOUNT,
     mediaMaxBytes: Math.round(e.MEDIA_MAX_MB * 1024 * 1024),
     mediaLinkTtlSeconds: e.MEDIA_LINK_TTL_SECONDS,
     pushEnabled: e.PUSH_ENABLED !== undefined ? e.PUSH_ENABLED === "true" : e.NODE_ENV !== "test",

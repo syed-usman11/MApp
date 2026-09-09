@@ -8,6 +8,8 @@ import { loadConfig } from "./config.js";
 import { connectDb, type DbHandle } from "./db/index.js";
 import { AesGcmVault } from "./identity/vault.js";
 import { createMailer, ResendMailer, SmtpMailer } from "./mail/mailer.js";
+import { FcmClient, isExpoToken } from "./push/fcm.js";
+import { generateKeyPairSync } from "node:crypto";
 
 const baseEnv = {
   NODE_ENV: "test",
@@ -403,5 +405,48 @@ describe("password reset email transport", () => {
     expect(createMailer({}, log, false).delivers).toBe(false);
     expect(createMailer({ resendApiKey: "re_x" }, log, true)).toBeInstanceOf(ResendMailer);
     expect(createMailer({ smtpHost: "smtp.example.com", smtpPort: 465, smtpUser: "u", smtpPass: "p" }, log, true)).toBeInstanceOf(SmtpMailer);
+  });
+});
+
+describe("android push through Firebase Cloud Messaging", () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+  const account = { project_id: "mapp-test", client_email: "push@mapp-test.iam.gserviceaccount.com", private_key: pem, token_uri: "https://oauth2.googleapis.com/token" };
+
+  it("exchanges a signed JWT for an access token once, then posts messages", async () => {
+    const calls: Array<{ url: string; body: string; auth?: string }> = [];
+    const fakeFetch: typeof fetch = async (url, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      calls.push({ url: String(url), body: String(init?.body), auth: headers.authorization });
+      if (String(url).includes("oauth2")) return new Response(JSON.stringify({ access_token: "ya29.test", expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ name: "projects/mapp-test/messages/1" }), { status: 200 });
+    };
+    const fcm = new FcmClient(account, fakeFetch);
+    expect(await fcm.send({ token: "fcm-device-1", title: "Alice", body: "hello", data: { conversationId: "c1" } })).toEqual({ ok: true });
+    expect(await fcm.send({ token: "fcm-device-1", title: "Alice", body: "again" })).toEqual({ ok: true });
+    expect(calls.filter((c) => c.url.includes("oauth2"))).toHaveLength(1);
+    const sends = calls.filter((c) => c.url.includes("fcm.googleapis.com"));
+    expect(sends).toHaveLength(2);
+    expect(sends[0]?.auth).toBe("Bearer ya29.test");
+    const body = JSON.parse(sends[0]!.body);
+    expect(body.message).toMatchObject({ token: "fcm-device-1", notification: { title: "Alice", body: "hello" }, data: { conversationId: "c1" } });
+    expect(body.message.android.notification.channel_id).toBe("messages");
+    const assertion = new URLSearchParams(calls[0]!.body).get("assertion") ?? "";
+    expect(assertion.split(".")).toHaveLength(3);
+  });
+
+  it("reports unregistered tokens so they get cleared", async () => {
+    const fakeFetch: typeof fetch = async (url) => {
+      if (String(url).includes("oauth2")) return new Response(JSON.stringify({ access_token: "t", expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ error: { status: "NOT_FOUND", details: [{ errorCode: "UNREGISTERED" }] } }), { status: 404 });
+    };
+    const res = await new FcmClient(account, fakeFetch).send({ token: "gone", title: "x", body: "y" });
+    expect(res).toMatchObject({ ok: false, unregistered: true });
+  });
+
+  it("tells Expo tokens and raw FCM tokens apart", () => {
+    expect(isExpoToken("ExponentPushToken[abc]")).toBe(true);
+    expect(isExpoToken("ExpoPushToken[abc]")).toBe(true);
+    expect(isExpoToken("dGhpcyBpcyBhIGZjbSB0b2tlbg:APA91b")).toBe(false);
   });
 });

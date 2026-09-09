@@ -58,8 +58,18 @@ export async function registerForPush(): Promise<{ token: string | null; reason?
     if (status !== "granted") status = (await Notifications.requestPermissionsAsync()).status;
     if (status !== "granted") return { token: null, reason: "denied" };
     const id = projectId();
-    if (!id) return { token: null, reason: "no-project-id" };
-    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId: id });
+    let token: string;
+    if (id) {
+      // Linked to an EAS project: Expo's push service (works for iOS and Android).
+      token = (await Notifications.getExpoPushTokenAsync({ projectId: id })).data;
+    } else if (Platform.OS === "android") {
+      // No Expo project: use the raw Firebase token; the server sends through FCM directly.
+      // Needs google-services.json in the build, otherwise this throws and we report it.
+      const device = await Notifications.getDevicePushTokenAsync();
+      token = String(device.data);
+    } else {
+      return { token: null, reason: "no-project-id" };
+    }
     await api("/v1/devices/push-token", { body: { token } });
     return { token };
   } catch (err) {

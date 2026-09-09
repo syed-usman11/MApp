@@ -15,5 +15,8 @@ apps/mobile/web-build/
 .claude/
 **/.claude/
 
+# Firebase config for Android push (download from the Firebase console; never commit)
+apps/mobile/google-services.json
+
 # Local APK builds
 builds/
