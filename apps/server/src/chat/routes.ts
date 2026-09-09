@@ -10,6 +10,7 @@ import {
   UpdateGroupRequest,
 } from "@mapp/protocol";
 import { authOf, requireAuth } from "../auth/plugin.js";
+import { AppError } from "../errors.js";
 import type { TokenService } from "../auth/tokens.js";
 import type { CallService } from "../calls/service.js";
 import type { PushService } from "../push/service.js";
@@ -87,7 +88,16 @@ export function chatRoutes(app: FastifyInstance, deps: { chat: ChatService; toke
   app.post<{ Params: { id: string } }>("/v1/conversations/:id/read", auth, async (req) => {
     const { userId } = authOf(req);
     const conversationId = Id.parse(req.params.id);
-    const { readAt, messages } = await chat.markConversationRead(userId, conversationId);
+    let result: Awaited<ReturnType<typeof chat.markConversationRead>>;
+    try {
+      result = await chat.markConversationRead(userId, conversationId);
+    } catch (err) {
+      // Surface the database error text: this endpoint fails on hosted Postgres but not locally.
+      req.log.error({ err }, "mark-read failed");
+      if (err instanceof AppError) throw err;
+      throw new AppError(500, "READ_FAILED", `mark-read failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const { readAt, messages } = result;
     for (const m of messages) {
       hub.send(m.senderId, { type: "receipt", messageId: m.id, conversationId, userId, kind: "read", at: readAt.toISOString() });
     }
