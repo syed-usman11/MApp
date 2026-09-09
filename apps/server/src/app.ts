@@ -103,7 +103,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return reply.status(status).send({ error: { code: status >= 500 ? "INTERNAL" : "BAD_REQUEST", message } });
   });
 
-  app.get("/health", async () => ({ ok: true }));
+  // Capability flags only (no secrets), so a deploy can be checked from outside.
+  app.get("/health", async () => ({ ok: true, push: { fcm: push.fcmConfigured }, mail: { configured: mailer.delivers } }));
 
   identityRoutes(app, identity);
   authRoutes(app, auth, tokens, { idVerificationRequired: config.idVerificationRequired });
