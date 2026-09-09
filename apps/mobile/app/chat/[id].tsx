@@ -495,10 +495,11 @@ function Bubble({
   const s = useStyles(makeStyles);
   const { colors } = useTheme();
   const time = new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // Sending: hollow dot. Sent to the server: one tick. Delivered to their device: two ticks. Seen: two blue ticks.
   const status: { icon: IconName; color: string } = message.failed
     ? { icon: "alert-circle", color: colors.danger }
     : message.pending
-      ? { icon: "time-outline", color: colors.muted }
+      ? { icon: "ellipse-outline", color: colors.muted }
       : receipt?.readAt
         ? { icon: "checkmark-done", color: colors.read }
         : receipt?.deliveredAt

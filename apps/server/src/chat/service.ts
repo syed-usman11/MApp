@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, ilike, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, lt, ne, notInArray, or, sql } from "drizzle-orm";
 import type {
   AttachmentInput,
   ContentType,
@@ -21,6 +21,29 @@ import { toPublicUser } from "../users/mapper.js";
 type MessageRow = typeof schema.messages.$inferSelect;
 
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * Timestamp parameter for raw SQL fragments. Inside a sql template a Date is
+ * handed to the driver untouched, and postgres-js then sends Date.toString(),
+ * which Postgres cannot parse. The ISO form with an explicit cast works on
+ * both the embedded database and hosted Postgres.
+ */
+const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`;
+
+/**
+ * "Newer than what this member has read", evaluated entirely in SQL. Comparing
+ * against a marker that went through JavaScript loses microseconds and leaves
+ * the newest message counted as unread.
+ */
+function unreadFor(userId: string, conversationId: string) {
+  const marker = sql`(select ${schema.conversationMembers.lastReadAt} from ${schema.conversationMembers} where ${schema.conversationMembers.conversationId} = ${conversationId} and ${schema.conversationMembers.userId} = ${userId})`;
+  return and(
+    eq(schema.messages.conversationId, conversationId),
+    ne(schema.messages.senderId, userId),
+    ne(schema.messages.contentType, "system"),
+    sql`(${marker} is null or ${schema.messages.createdAt} > ${marker})`,
+  );
+}
 
 export interface SendInput {
   conversationId: string;
@@ -233,17 +256,15 @@ export class ChatService {
   /** Sum of unread counts across all conversations, for the app icon badge. */
   async unreadTotal(userId: string): Promise<number> {
     const rows = await this.db
-      .select({ conversationId: schema.conversationMembers.conversationId, lastReadAt: schema.conversationMembers.lastReadAt })
+      .select({ conversationId: schema.conversationMembers.conversationId })
       .from(schema.conversationMembers)
       .where(eq(schema.conversationMembers.userId, userId));
     let total = 0;
     for (const r of rows) {
-      const conditions = [eq(schema.messages.conversationId, r.conversationId), ne(schema.messages.senderId, userId), ne(schema.messages.contentType, "system")];
-      if (r.lastReadAt) conditions.push(gt(schema.messages.createdAt, r.lastReadAt));
       const [c] = await this.db
         .select({ count: sql<number>`count(*)::int` })
         .from(schema.messages)
-        .where(and(...conditions));
+        .where(unreadFor(userId, r.conversationId));
       total += c?.count ?? 0;
     }
     return total;
@@ -427,28 +448,17 @@ export class ChatService {
         .values(unread.map((m) => ({ messageId: m.id, userId, deliveredAt: readAt, readAt })))
         .onConflictDoUpdate({
           target: [schema.messageReceipts.messageId, schema.messageReceipts.userId],
-          set: { readAt, deliveredAt: sql`coalesce(${schema.messageReceipts.deliveredAt}, ${readAt})` },
+          set: { readAt, deliveredAt: sql`coalesce(${schema.messageReceipts.deliveredAt}, ${ts(readAt)})` },
         });
     }
-    // The marker moves to the newest message in the chat, whether or not anything was unread.
-    const [latest] = await this.db
-      .select({ createdAt: schema.messages.createdAt })
-      .from(schema.messages)
-      .where(and(eq(schema.messages.conversationId, conversationId), ne(schema.messages.senderId, userId)))
-      .orderBy(desc(schema.messages.createdAt))
-      .limit(1);
-    if (latest) {
-      await this.db
-        .update(schema.conversationMembers)
-        .set({ lastReadAt: latest.createdAt })
-        .where(
-          and(
-            eq(schema.conversationMembers.conversationId, conversationId),
-            eq(schema.conversationMembers.userId, userId),
-            sql`(${schema.conversationMembers.lastReadAt} is null or ${schema.conversationMembers.lastReadAt} < ${latest.createdAt})`,
-          ),
-        );
-    }
+    // The marker moves to the newest message from anyone else. Computed inside Postgres so it
+    // keeps microsecond precision; a value round-tripped through JavaScript loses the last
+    // digits and would leave the newest message counted as unread.
+    const newest = sql`(select max(${schema.messages.createdAt}) from ${schema.messages} where ${schema.messages.conversationId} = ${conversationId} and ${schema.messages.senderId} <> ${userId})`;
+    await this.db
+      .update(schema.conversationMembers)
+      .set({ lastReadAt: sql`greatest(coalesce(${schema.conversationMembers.lastReadAt}, ${newest}), ${newest})` })
+      .where(and(eq(schema.conversationMembers.conversationId, conversationId), eq(schema.conversationMembers.userId, userId)));
     return { readAt, messages: unread.map((m) => ({ id: m.id, senderId: m.senderId })) };
   }
 
@@ -466,21 +476,16 @@ export class ChatService {
         target: [schema.messageReceipts.messageId, schema.messageReceipts.userId],
         set:
           kind === "read"
-            ? { readAt: at, deliveredAt: sql`coalesce(${schema.messageReceipts.deliveredAt}, ${at})` }
-            : { deliveredAt: sql`coalesce(${schema.messageReceipts.deliveredAt}, ${at})` },
+            ? { readAt: at, deliveredAt: sql`coalesce(${schema.messageReceipts.deliveredAt}, ${ts(at)})` }
+            : { deliveredAt: sql`coalesce(${schema.messageReceipts.deliveredAt}, ${ts(at)})` },
       });
 
     if (kind === "read") {
+      const messageTime = sql`(select ${schema.messages.createdAt} from ${schema.messages} where ${schema.messages.id} = ${messageId})`;
       await this.db
         .update(schema.conversationMembers)
-        .set({ lastReadAt: row.createdAt })
-        .where(
-          and(
-            eq(schema.conversationMembers.conversationId, row.conversationId),
-            eq(schema.conversationMembers.userId, userId),
-            sql`(${schema.conversationMembers.lastReadAt} is null or ${schema.conversationMembers.lastReadAt} < ${row.createdAt})`,
-          ),
-        );
+        .set({ lastReadAt: sql`greatest(coalesce(${schema.conversationMembers.lastReadAt}, ${messageTime}), ${messageTime})` })
+        .where(and(eq(schema.conversationMembers.conversationId, row.conversationId), eq(schema.conversationMembers.userId, userId)));
     }
     return { message: (await this.hydrate([row]))[0]!, at };
   }
@@ -616,12 +621,10 @@ export class ChatService {
       .orderBy(desc(schema.messages.createdAt))
       .limit(1);
 
-    const unreadConditions = [eq(schema.messages.conversationId, conversationId), ne(schema.messages.senderId, userId), ne(schema.messages.contentType, "system")];
-    if (me.lastReadAt) unreadConditions.push(gt(schema.messages.createdAt, me.lastReadAt));
     const [unread] = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(schema.messages)
-      .where(and(...unreadConditions));
+      .where(unreadFor(userId, conversationId));
 
     return {
       id: conv.id,
