@@ -3,7 +3,7 @@
     "name": "MApp",
     "slug": "mapp",
     "scheme": "mapp",
-    "version": "1.5",
+    "version": "1.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -35,7 +35,7 @@
         "VIBRATE",
         "READ_MEDIA_IMAGES"
       ],
-      "versionCode": 6
+      "versionCode": 7
     },
     "web": {
       "bundler": "metro",
