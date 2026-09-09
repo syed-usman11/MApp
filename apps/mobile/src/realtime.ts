@@ -36,12 +36,24 @@ class Realtime {
     useChat.getState().setConnected(false);
   }
 
+  /** Receipts and reactions issued while offline; replayed once the socket is ready. */
+  private readonly outbox: ClientEvent[] = [];
+
   send(event: ClientEvent): boolean {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(event));
       return true;
     }
+    if (event.type === "message.ack" || event.type === "reaction") {
+      this.outbox.push(event);
+      if (this.outbox.length > 200) this.outbox.shift();
+    }
     return false;
+  }
+
+  private flushOutbox(): void {
+    const queued = this.outbox.splice(0);
+    for (const event of queued) this.send(event);
   }
 
   private async connect(): Promise<void> {
@@ -74,6 +86,7 @@ class Realtime {
         this.attempt = 0;
         useChat.getState().setConnected(true);
         this.startPing();
+        this.flushOutbox();
         return;
       }
       if (event.type === "error" && event.code === "UNAUTHENTICATED") {

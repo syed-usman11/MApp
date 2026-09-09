@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppState, FlatList, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeInUp, FadeOut } from "react-native-reanimated";
 import type { Attachment, Conversation, Member, ReplyPreview } from "@mapp/protocol";
 import { errorMessage } from "../../src/api";
@@ -39,6 +39,7 @@ export default function Thread() {
   const markFailed = useChat((st) => st.markFailed);
   const markHiddenLocally = useChat((st) => st.markHiddenLocally);
   const clearUnread = useChat((st) => st.clearUnread);
+  const markRead = useChat((st) => st.markRead);
   const startCall = useCall((c) => c.startCall);
 
   const [text, setText] = useState("");
@@ -80,16 +81,37 @@ export default function Thread() {
     })();
   }, [conversationId, conversation, loadConversations, loadMessages]);
 
-  // Send a read receipt for the newest incoming message whenever one appears while this screen is open.
+  // Mark the chat read whenever a new incoming message is on screen. Goes over HTTP so it
+  // survives a cold start where the socket is not connected yet; only remembered as done on success.
+  const newestIncoming = useMemo(() => {
+    if (!messages || !me) return null;
+    return [...messages].reverse().find((m) => m.senderId !== me.id && !m.pending && m.contentType !== "system")?.id ?? null;
+  }, [messages, me]);
   useEffect(() => {
-    if (!messages || !me) return;
-    const incoming = [...messages].reverse().find((m) => m.senderId !== me.id && !m.pending && m.contentType !== "system");
-    if (incoming && incoming.id !== lastReadId.current) {
-      lastReadId.current = incoming.id;
-      realtime.send({ type: "message.ack", messageId: incoming.id, kind: "read" });
-    }
+    if (!loaded) return;
     clearUnread(conversationId);
-  }, [messages, me, conversationId, clearUnread]);
+    if (!newestIncoming || newestIncoming === lastReadId.current) return;
+    let cancelled = false;
+    markRead(conversationId)
+      .then(() => {
+        if (!cancelled) lastReadId.current = newestIncoming;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [newestIncoming, loaded, conversationId, clearUnread, markRead]);
+
+  // Coming back from the background: re-sync in case anything arrived while suspended.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && loaded) {
+        lastReadId.current = null;
+        void markRead(conversationId).catch(() => undefined);
+      }
+    });
+    return () => sub.remove();
+  }, [conversationId, loaded, markRead]);
 
   // Re-render so stale typing indicators expire.
   useEffect(() => {

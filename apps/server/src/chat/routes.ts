@@ -83,6 +83,17 @@ export function chatRoutes(app: FastifyInstance, deps: { chat: ChatService; toke
     return chat.listMessages(userId, conversationId, ListMessagesQuery.parse(req.query));
   });
 
+  /** Opening a chat: mark everything read and tell each sender their ticks turned blue. */
+  app.post<{ Params: { id: string } }>("/v1/conversations/:id/read", auth, async (req) => {
+    const { userId } = authOf(req);
+    const conversationId = Id.parse(req.params.id);
+    const { readAt, messages } = await chat.markConversationRead(userId, conversationId);
+    for (const m of messages) {
+      hub.send(m.senderId, { type: "receipt", messageId: m.id, conversationId, userId, kind: "read", at: readAt.toISOString() });
+    }
+    return { ok: true, count: messages.length };
+  });
+
   app.get("/v1/search", auth, async (req) => {
     const { userId } = authOf(req);
     const q = SearchQuery.parse(req.query);

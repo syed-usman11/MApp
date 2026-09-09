@@ -58,6 +58,8 @@ export interface ChatState {
   markFailed(conversationId: string, clientId: string): void;
   markHiddenLocally(messageId: string): void;
   clearUnread(conversationId: string): void;
+  /** Tells the server every message in the chat has been read. Reliable over HTTP; safe to repeat. */
+  markRead(conversationId: string): Promise<void>;
   handleEvent(event: ServerEvent): void;
   reset(): void;
 }
@@ -182,6 +184,11 @@ export const useChat = create<ChatState>((set, get) => ({
 
   markHiddenLocally(messageId) {
     set((s) => ({ hiddenLocally: { ...s.hiddenLocally, [messageId]: true } }));
+  },
+
+  async markRead(conversationId) {
+    get().clearUnread(conversationId);
+    await api(`/v1/conversations/${conversationId}/read`, { method: "POST", body: {} });
   },
 
   clearUnread(conversationId) {

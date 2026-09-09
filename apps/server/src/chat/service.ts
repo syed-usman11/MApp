@@ -397,6 +397,59 @@ export class ChatService {
     return { messages, conversations };
   }
 
+  /**
+   * Marks every message the caller has not read yet in a conversation as
+   * delivered and read, and moves their read marker to the newest one. Used
+   * when a chat is opened, over HTTP, so it works before the socket is up.
+   */
+  async markConversationRead(userId: string, conversationId: string): Promise<{ readAt: Date; messages: Array<{ id: string; senderId: string }> }> {
+    await this.assertMember(userId, conversationId);
+    const readAt = new Date();
+    const unread = await this.db
+      .select({ id: schema.messages.id, senderId: schema.messages.senderId, createdAt: schema.messages.createdAt })
+      .from(schema.messages)
+      .leftJoin(schema.messageReceipts, and(eq(schema.messageReceipts.messageId, schema.messages.id), eq(schema.messageReceipts.userId, userId)))
+      .where(
+        and(
+          eq(schema.messages.conversationId, conversationId),
+          ne(schema.messages.senderId, userId),
+          ne(schema.messages.contentType, "system"),
+          isNull(schema.messageReceipts.readAt),
+        ),
+      )
+      .orderBy(desc(schema.messages.createdAt))
+      .limit(500);
+    if (unread.length > 0) {
+      await this.db
+        .insert(schema.messageReceipts)
+        .values(unread.map((m) => ({ messageId: m.id, userId, deliveredAt: readAt, readAt })))
+        .onConflictDoUpdate({
+          target: [schema.messageReceipts.messageId, schema.messageReceipts.userId],
+          set: { readAt, deliveredAt: sql`coalesce(${schema.messageReceipts.deliveredAt}, ${readAt})` },
+        });
+    }
+    // The marker moves to the newest message in the chat, whether or not anything was unread.
+    const [latest] = await this.db
+      .select({ createdAt: schema.messages.createdAt })
+      .from(schema.messages)
+      .where(and(eq(schema.messages.conversationId, conversationId), ne(schema.messages.senderId, userId)))
+      .orderBy(desc(schema.messages.createdAt))
+      .limit(1);
+    if (latest) {
+      await this.db
+        .update(schema.conversationMembers)
+        .set({ lastReadAt: latest.createdAt })
+        .where(
+          and(
+            eq(schema.conversationMembers.conversationId, conversationId),
+            eq(schema.conversationMembers.userId, userId),
+            sql`(${schema.conversationMembers.lastReadAt} is null or ${schema.conversationMembers.lastReadAt} < ${latest.createdAt})`,
+          ),
+        );
+    }
+    return { readAt, messages: unread.map((m) => ({ id: m.id, senderId: m.senderId })) };
+  }
+
   async markReceipt(userId: string, messageId: string, kind: ReceiptKind): Promise<{ message: Message; at: Date } | null> {
     const row = await this.row(messageId);
     if (row.senderId === userId) return null;

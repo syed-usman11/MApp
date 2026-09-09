@@ -277,6 +277,30 @@ describe("groups, media, message actions, search, push and calls", () => {
     expect(outsider.json().messages).toEqual([]);
   });
 
+  it("marks a whole conversation read over HTTP and notifies the senders", async () => {
+    const a = connect(alice.tokens.accessToken);
+    await a.authed;
+    a.send({ type: "message.send", clientId: "u1", conversationId: group.id, body: "Unread one" });
+    await a.nextOfType("message.sent");
+    a.send({ type: "message.send", clientId: "u2", conversationId: group.id, body: "Unread two" });
+    await a.nextOfType("message.sent");
+
+    const before = (await app.inject({ method: "GET", url: "/v1/conversations", headers: bearer(carol.tokens.accessToken) })).json();
+    expect(before.conversations.find((c: Conversation) => c.id === group.id).unreadCount).toBeGreaterThanOrEqual(2);
+
+    const read = await app.inject({ method: "POST", url: `/v1/conversations/${group.id}/read`, headers: bearer(carol.tokens.accessToken) });
+    expect(read.statusCode).toBe(200);
+    expect(read.json().count).toBeGreaterThanOrEqual(2);
+    // Alice, the sender, sees the read receipts arrive live.
+    expect(await a.nextOfType("receipt")).toMatchObject({ conversationId: group.id, userId: carol.user.id, kind: "read" });
+
+    const after = (await app.inject({ method: "GET", url: "/v1/conversations", headers: bearer(carol.tokens.accessToken) })).json();
+    expect(after.conversations.find((c: Conversation) => c.id === group.id).unreadCount).toBe(0);
+    // Idempotent: a second call finds nothing new and keeps the count at zero.
+    expect((await app.inject({ method: "POST", url: `/v1/conversations/${group.id}/read`, headers: bearer(carol.tokens.accessToken) })).json().count).toBe(0);
+    a.close();
+  });
+
   it("pushes to offline members with an unread badge, and reports unread totals", async () => {
     const reg = await app.inject({ method: "POST", url: "/v1/devices/push-token", headers: bearer(carol.tokens.accessToken), payload: { token: "ExponentPushToken[carol]" } });
     expect(reg.statusCode).toBe(200);
@@ -293,7 +317,8 @@ describe("groups, media, message actions, search, push and calls", () => {
     expect(pushed[0]).toMatchObject({ to: "ExponentPushToken[carol]", title: "Beach trip", body: "Alice: Carol, are you coming?", data: { conversationId: group.id, kind: "message" } });
 
     const unread = await app.inject({ method: "GET", url: "/v1/unread", headers: bearer(carol.tokens.accessToken) });
-    expect(unread.json().total).toBeGreaterThanOrEqual(2);
+    // Everything earlier was marked read by the previous test; only the message just sent is unread.
+    expect(unread.json().total).toBe(1);
 
     const cleared = await app.inject({ method: "POST", url: "/v1/devices/push-token", headers: bearer(carol.tokens.accessToken), payload: { token: null } });
     expect(cleared.statusCode).toBe(200);
